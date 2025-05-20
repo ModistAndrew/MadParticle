@@ -34,7 +34,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(SimParams {
-            gravity: Vec3::new(0.0, -9.81, 0.0),
+            gravity: Vec3::new(0.0, -10.0, 0.0),
             substeps: 5,
             collision_radius: 0.12, // Slightly larger than visual radius
             bounce_factor: 0.3,
@@ -66,14 +66,14 @@ fn setup(
     ));
 
     // Ground plane
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::new(
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec2::new(20.0, 20.0),
-        ))),
-        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
+    // commands.spawn((
+    //     Mesh3d(meshes.add(Plane3d::new(
+    //         Vec3::new(0.0, 1.0, 0.0),
+    //         Vec2::new(20.0, 20.0),
+    //     ))),
+    //     MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
+    //     Transform::from_xyz(0.0, -0.9, 0.0),
+    // ));
 
     // Particle mesh and material
     let sphere_mesh = meshes.add(Mesh::from(Sphere::new(0.1)));
@@ -89,14 +89,13 @@ fn setup(
     let mut rng = rand::rng();
     let mut particle_entities = Vec::new();
 
-    for _ in 0..100 {
-        let position = Vec3::new(
-            rng.random_range(-5.0..5.0),
-            rng.random_range(1.0..8.0),
-            rng.random_range(-5.0..5.0),
-        );
+    for i in 0..1000 {
+        let x = i % 10;
+        let y = (i / 10) % 10;
+        let z = i / 100;
+        let position = Vec3::new(x as f32 * 0.2, y as f32 * 0.2, z as f32 * 0.2);
 
-        let mass = rng.random_range(0.8..1.2);
+        let mass = 1.0;
         let inverse_mass = 1.0 / mass;
 
         let entity = commands
@@ -118,19 +117,15 @@ fn setup(
     }
 
     // Create some connections between nearby particles
-    for i in 0..particle_entities.len() {
-        for j in (i + 1)..particle_entities.len() {
-            if rng.random::<f32>() < 0.02 {
-                // Only create some connections
-                commands.spawn(Connection {
-                    particle1: particle_entities[i],
-                    particle2: particle_entities[j],
-                    rest_length: rng.random_range(0.5..2.0),
-                    stiffness: 0.8,
-                });
-            }
-        }
-    }
+    // for i in 0..particle_entities.len() - 1 {
+    //     // Only create some connections
+    //     commands.spawn(Connection {
+    //         particle1: particle_entities[i],
+    //         particle2: particle_entities[i + 1],
+    //         rest_length: 0.5,
+    //         stiffness: 0.8,
+    //     });
+    // }
 }
 
 fn pbd_step(
@@ -155,18 +150,14 @@ fn pbd_step(
         }
 
         // 2. Constraint resolution iterations
-        for _ in 0..3 { // Multiple iterations for better convergence
+        for _ in 0..3 {
+            // Multiple iterations for better convergence
             // 2a. Solve boundary constraints
             for (_, mut particle, _) in particles.iter_mut() {
                 // Floor collision
-                if particle.predicted_position.y < 0.1 {
-                    particle.predicted_position.y = 0.1;
+                if particle.predicted_position.y < -1.0 {
+                    particle.predicted_position.y = -1.0;
                 }
-
-                // Simple box boundaries
-                let bounds = Vec3::new(10.0, 10.0, 10.0);
-                particle.predicted_position.x = particle.predicted_position.x.clamp(-bounds.x, bounds.x);
-                particle.predicted_position.z = particle.predicted_position.z.clamp(-bounds.z, bounds.z);
             }
 
             // 2b. Solve distance constraints (connections)
@@ -175,7 +166,7 @@ fn pbd_step(
             }
 
             // 2c. Solve collision constraints between particles
-            solve_collision_constraints(&mut particles, sim_params.collision_radius);
+            // solve_collision_constraints(&mut particles, sim_params.collision_radius);
         }
 
         // 3. Update velocities and positions
