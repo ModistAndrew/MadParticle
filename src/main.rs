@@ -95,10 +95,10 @@ fn setup(
     let mut rng = rand::rng();
     let mut particle_entities = Vec::new();
 
-    for i in 0..1000 {
+    for i in 0..5000 {
         let x = i % 10 - 5;
-        let y = (i / 10) % 10;
-        let z = i / 100 - 5;
+        let z = (i / 10) % 10 - 5;
+        let y = i / 100;
         let position = Vec3::new(x as f32 * 0.2, y as f32 * 0.2, z as f32 * 0.2);
 
         let mass = 1.0;
