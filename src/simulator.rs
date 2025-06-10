@@ -1,9 +1,9 @@
 use bevy::math::Vec3;
-use rstar::primitives::GeomWithData;
-use rstar::{PointDistance, RTree};
+use rayon::prelude::*;
+use std::collections::HashMap;
 use std::f32::consts::PI;
 
-const GRAVITY: Vec3 = Vec3::new(0.0, -1.0, 0.0);
+const GRAVITY: Vec3 = Vec3::new(0.0, -9.81, 0.0);
 const SOLVER_ITERATIONS: usize = 5;
 const STEP_DT: f32 = 0.04;
 
@@ -46,16 +46,14 @@ impl Simulator {
     }
 
     pub fn step(&mut self) {
+        let current_time = std::time::Instant::now();
         for particle in &mut self.particles {
             particle.velocity += GRAVITY * STEP_DT;
             particle.position = particle.old_position + particle.velocity * STEP_DT;
         }
 
-        println!("Updating neighbors...");
-        self.update_neighbors();
-        println!("Finished updating neighbors.");
-
         for _ in 0..SOLVER_ITERATIONS {
+            self.update_neighbors();
             self.update_lambdas();
             self.update_deltas();
             for particle in &mut self.particles {
@@ -74,6 +72,8 @@ impl Simulator {
             // particle.velocity *= DAMPING;
             particle.old_position = particle.position;
         }
+        let elapsed = current_time.elapsed();
+        println!("PBD step took: {:.2?}", elapsed);
     }
 
     pub fn get_particle_position(&self, index: usize) -> Vec3 {
@@ -81,32 +81,52 @@ impl Simulator {
     }
 
     fn update_neighbors(&mut self) {
-        let tree = RTree::bulk_load(
-            self.particles
-                .iter()
-                .enumerate()
-                .map(|(i, particle)| GeomWithData::new(particle.position.to_array(), i))
-                .collect(),
-        );
-        for particle in &mut self.particles {
-            let position = particle.position.to_array();
-            particle.neighbors = tree
-                .locate_within_distance(position, KERNEL_RADIUS)
-                .filter(|g| g.distance_2(&position) > EPSILON)
-                .map(|g| g.data)
-                .collect();
+        let cell_size = KERNEL_RADIUS;
+        let positions: Vec<Vec3> = self.particles.iter().map(|p| p.position).collect();
+        let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
+        for (i, &position) in positions.iter().enumerate() {
+            let cell = (
+                (position.x / cell_size).floor() as i32,
+                (position.y / cell_size).floor() as i32,
+                (position.z / cell_size).floor() as i32,
+            );
+            grid.entry(cell).or_default().push(i);
         }
+        self.particles.par_iter_mut().for_each(|particle| {
+            let position = particle.position;
+            let cell = (
+                (position.x / cell_size).floor() as i32,
+                (position.y / cell_size).floor() as i32,
+                (position.z / cell_size).floor() as i32,
+            );
+            let mut neighbors = Vec::new();
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    for dz in -1..=1 {
+                        let neighbor_cell = (cell.0 + dx, cell.1 + dy, cell.2 + dz);
+                        if let Some(cell_particles) = grid.get(&neighbor_cell) {
+                            for &neighbor_index in cell_particles {
+                                let dist = position.distance(positions[neighbor_index]);
+                                if dist < KERNEL_RADIUS && dist > EPSILON {
+                                    neighbors.push(neighbor_index);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            particle.neighbors = neighbors;
+        });
     }
 
     fn update_lambdas(&mut self) {
-        for i in 0..self.particles.len() {
-            let particle = &self.particles[i];
+        let positions: Vec<Vec3> = self.particles.iter().map(|p| p.position).collect();
+        self.particles.par_iter_mut().for_each(|particle| {
             let mut density = 0.0;
             let mut sum_gradient_sqared = 0.0;
             let mut self_gradient = Vec3::ZERO;
             for &neighbor_index in &particle.neighbors {
-                let neighbor = &self.particles[neighbor_index];
-                let dir = particle.position - neighbor.position;
+                let dir = particle.position - positions[neighbor_index];
                 density += Self::cubic_kernel(KERNEL_RADIUS, dir);
                 let gradient = Self::cubic_kernel_gradient(KERNEL_RADIUS, dir) / TARGET_DENSITY;
                 sum_gradient_sqared += gradient.length_squared();
@@ -114,23 +134,23 @@ impl Simulator {
             }
             sum_gradient_sqared += self_gradient.length_squared();
             let constraint = (density / TARGET_DENSITY - 1.0).max(0.0);
-            self.particles[i].lambda = -constraint / (sum_gradient_sqared + EPSILON);
-        }
+            particle.lambda = -constraint / (sum_gradient_sqared + 0.01);
+        });
     }
 
     fn update_deltas(&mut self) {
-        for i in 0..self.particles.len() {
-            let particle = &self.particles[i];
+        let positions: Vec<Vec3> = self.particles.iter().map(|p| p.position).collect();
+        let lambdas: Vec<f32> = self.particles.iter().map(|p| p.lambda).collect();
+        self.particles.par_iter_mut().for_each(|particle| {
             let mut correction = Vec3::ZERO;
             for &neighbor_index in &particle.neighbors {
-                let neighbor = &self.particles[neighbor_index];
-                let dir = particle.position - neighbor.position;
+                let dir = particle.position - positions[neighbor_index];
                 let gradient = Self::cubic_kernel_gradient(KERNEL_RADIUS, dir);
-                correction += (particle.lambda + neighbor.lambda) * gradient;
+                correction += (particle.lambda + lambdas[neighbor_index]) * gradient;
             }
             correction /= TARGET_DENSITY;
-            self.particles[i].position += correction;
-        }
+            particle.position += correction;
+        });
     }
 
     fn cubic_kernel(h: f32, dir: Vec3) -> f32 {
@@ -138,8 +158,8 @@ impl Simulator {
         if r >= h {
             return 0.0;
         }
-        let coeff = 15.0 / PI / h.powi(6);
-        coeff * (h - r).powi(3)
+        let coeff = 315.0 / 64.0 / PI / h.powi(9);
+        coeff * (h.powi(2) - r.powi(2)).powi(3)
     }
 
     fn cubic_kernel_gradient(h: f32, dir: Vec3) -> Vec3 {
