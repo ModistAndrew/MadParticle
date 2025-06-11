@@ -8,10 +8,10 @@ const SOLVER_ITERATIONS: usize = 5;
 const STEP_DT: f32 = 0.04;
 
 const KERNEL_RADIUS: f32 = 0.5;
-const TARGET_DENSITY: f32 = 100.0;
+const TARGET_DENSITY: f32 = 200.0;
 const VORTICITY: f32 = 0.1;
 const VISCOSITY: f32 = 0.01;
-const EPSILON: f32 = 0.0001;
+const EPSILON: f32 = 0.00001;
 const DAMPING: f32 = 0.98;
 
 pub struct Particle {
@@ -127,14 +127,15 @@ impl Simulator {
             let mut self_gradient = Vec3::ZERO;
             for &neighbor_index in &particle.neighbors {
                 let dir = particle.position - positions[neighbor_index];
-                density += Self::cubic_kernel(KERNEL_RADIUS, dir);
-                let gradient = Self::cubic_kernel_gradient(KERNEL_RADIUS, dir) / TARGET_DENSITY;
+                density += Self::kernel(KERNEL_RADIUS, dir);
+                let gradient = Self::kernel_gradient(KERNEL_RADIUS, dir) / TARGET_DENSITY;
                 sum_gradient_sqared += gradient.length_squared();
                 self_gradient += gradient;
             }
+            density += Self::kernel(KERNEL_RADIUS, Vec3::ZERO);
             sum_gradient_sqared += self_gradient.length_squared();
             let constraint = (density / TARGET_DENSITY - 1.0).max(0.0);
-            particle.lambda = -constraint / (sum_gradient_sqared + 0.01);
+            particle.lambda = -constraint / (sum_gradient_sqared + EPSILON);
         });
     }
 
@@ -145,24 +146,23 @@ impl Simulator {
             let mut correction = Vec3::ZERO;
             for &neighbor_index in &particle.neighbors {
                 let dir = particle.position - positions[neighbor_index];
-                let gradient = Self::cubic_kernel_gradient(KERNEL_RADIUS, dir);
+                let gradient = Self::kernel_gradient(KERNEL_RADIUS, dir) / TARGET_DENSITY;
                 correction += (particle.lambda + lambdas[neighbor_index]) * gradient;
             }
-            correction /= TARGET_DENSITY;
-            particle.position += correction;
+            particle.delta = correction;
         });
     }
 
-    fn cubic_kernel(h: f32, dir: Vec3) -> f32 {
+    fn kernel(h: f32, dir: Vec3) -> f32 {
         let r = dir.length();
         if r >= h {
             return 0.0;
         }
-        let coeff = 315.0 / 64.0 / PI / h.powi(9);
-        coeff * (h.powi(2) - r.powi(2)).powi(3)
+        let coeff = 315.0 / 64.0 / PI / h.powi(3);
+        coeff * (1.0 - r.powi(2) / h.powi(2)).powi(3)
     }
 
-    fn cubic_kernel_gradient(h: f32, dir: Vec3) -> Vec3 {
+    fn kernel_gradient(h: f32, dir: Vec3) -> Vec3 {
         let r = dir.length();
         if r <= EPSILON || r >= h {
             return Vec3::ZERO;
