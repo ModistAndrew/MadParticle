@@ -1,14 +1,18 @@
 mod generator;
 mod simulator;
+mod surfacing;
 
 use crate::generator::Generator;
 use crate::simulator::Simulator;
 use bevy::prelude::*;
+use bevy::render::mesh::{Indices, PrimitiveTopology};
 
 #[derive(Component)]
 struct Index(usize);
 #[derive(Component)]
 struct SimulatorComponent(Simulator);
+#[derive(Resource)]
+struct SurfaceMeshHandle(Handle<Mesh>);
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -35,6 +39,13 @@ fn setup(
     ));
 
     let radius = 0.05;
+    let params = simulator::FluidParams {
+            kernel_radius: radius * 4.0,
+            target_density: 1.0 / (2.0 * radius).powi(3),
+            viscosity: 0.5,
+            surface_tension: 5.0,
+            adhesion: 5.0,
+    };
 
     // Particle mesh and material
     let sphere_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
@@ -52,46 +63,79 @@ fn setup(
     let mut simulator = Simulator::new(
         0.01,
         Vec3::new(0.0, -9.81, 0.0),
-        simulator::FluidParams {
-            kernel_radius: radius * 4.0,
-            target_density: 1.0 / (2.0 * radius).powi(3),
-            viscosity: 0.5,
-            surface_tension: 5.0,
-            adhesion: 5.0,
-        },
+        params
     );
 
     let particles = Generator::from_csv("assets/output.csv")
         .unwrap_or_else(|e| panic!("Failed to load particles: {}", e));
     particles.iter().enumerate().for_each(|(i, &p)| {
         simulator.add_particle(p);
-        commands.spawn((
-            Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(particle_material.clone()),
-            Transform::from_translation(p),
-            Index(i),
-        ));
+        // commands.spawn((
+        //     Mesh3d(sphere_mesh.clone()),
+        //     MeshMaterial3d(particle_material.clone()),
+        //     Transform::from_translation(p),
+        //     Index(i),
+        // ));
     });
 
     let boundaries = generator.aabb(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, -2.0, 5.0));
     boundaries.iter().for_each(|&p| {
         simulator.add_boundary(p);
-        commands.spawn((
-            Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(boundary_material.clone()),
-            Transform::from_translation(p),
-        ));
+        // commands.spawn((
+        //     Mesh3d(sphere_mesh.clone()),
+        //     MeshMaterial3d(boundary_material.clone()),
+        //     Transform::from_translation(p),
+        // ));
     });
     simulator.init();
     commands.spawn(SimulatorComponent(simulator));
+
+    let surfacing_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.2, 0.5, 0.8),
+        metallic: 0.7,
+        perceptual_roughness: 0.2,
+        ..default()
+    });
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
+    let (position, normal, triangle_index) = surfacing::surfacing(&Vec::new(), params);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
+    mesh.insert_indices(Indices::U32(triangle_index));
+
+    let mesh_handle = meshes.add(mesh);
+    commands.spawn((
+        Mesh3d(mesh_handle.clone()),
+        MeshMaterial3d(surfacing_material),
+        Transform::from_translation(Vec3::ZERO),
+        GlobalTransform::default(),
+    ));
+    commands.insert_resource(SurfaceMeshHandle(mesh_handle));
+
 }
 
 fn pbd_step(
     mut particles: Query<(&Index, &mut Transform)>,
     mut simulator: Single<&mut SimulatorComponent>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mesh_handle: Res<SurfaceMeshHandle>,
 ) {
     simulator.0.step();
     for (id, mut transform) in particles.iter_mut() {
         transform.translation = simulator.0.get_particle_position(id.0);
+    }
+
+    let radius = 0.05;
+    let params = simulator::FluidParams {
+            kernel_radius: radius * 4.0,
+            target_density: 1.0 / (2.0 * radius).powi(3),
+            viscosity: 0.5,
+            surface_tension: 5.0,
+            adhesion: 5.0,
+    };
+    let (position, normal, triangle_index) = surfacing::surfacing(&(simulator.0.particles), params);
+    if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
+        mesh.insert_indices(Indices::U32(triangle_index));
     }
 }

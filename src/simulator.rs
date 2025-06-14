@@ -4,10 +4,10 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::f32::consts::PI;
 
-struct Particle {
+pub struct Particle {
     boundary: bool,
     old_position: Vec3,
-    position: Vec3,
+    pub position: Vec3,
     velocity: Vec3,
     neighbors: Vec<usize>,
     density: f32,
@@ -44,7 +44,7 @@ pub struct FluidParams {
 }
 
 impl FluidParams {
-    fn kernel(&self, dir: Vec3) -> f32 {
+    pub fn kernel(&self, dir: Vec3) -> f32 {
         let h = self.kernel_radius;
         let r = dir.length();
         let c = 315.0 / 64.0 / PI / h.powi(3);
@@ -54,7 +54,7 @@ impl FluidParams {
         c * (1.0 - r.powi(2) / h.powi(2)).powi(3)
     }
 
-    fn kernel_gradient(&self, dir: Vec3) -> Vec3 {
+    pub fn kernel_gradient(&self, dir: Vec3) -> Vec3 {
         let h = self.kernel_radius;
         let r = dir.length();
         let c = -45.0 / PI / h.powi(6);
@@ -90,7 +90,7 @@ impl FluidParams {
 }
 
 pub struct Simulator {
-    particles: Vec<Particle>,
+    pub particles: Vec<Particle>,
     boundaries: Vec<Particle>,
     step_dt: f32,
     gravity: Vec3,
