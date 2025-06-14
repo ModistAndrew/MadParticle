@@ -10,6 +10,7 @@ struct Particle {
     position: Vec3,
     velocity: Vec3,
     neighbors: Vec<usize>,
+    density: f32,
     lambda: f32,
     phi: f32,
 }
@@ -22,6 +23,7 @@ impl Particle {
             position,
             velocity: Vec3::ZERO,
             neighbors: Vec::new(),
+            density: 0.0,
             lambda: 0.0, // always 0.0 for boundary particles
             phi: 1.0,    // always 1.0 for fluid particles
         }
@@ -32,6 +34,7 @@ impl Particle {
 pub struct FluidParams {
     pub kernel_radius: f32,
     pub target_density: f32,
+    pub xsph_viscosity: f32,
 }
 
 impl FluidParams {
@@ -99,8 +102,12 @@ impl Simulator {
 
         for particle in &mut self.particles {
             particle.velocity = (particle.position - particle.old_position) / self.step_dt;
+        }
+        self.apply_xsph_viscosity();
+        for particle in &mut self.particles {
             particle.old_position = particle.position;
         }
+
         let elapsed = current_time.elapsed();
         println!("PBD step took: {:.2?}", elapsed);
     }
@@ -111,6 +118,28 @@ impl Simulator {
 
     pub fn init(&mut self) {
         self.compute_phis();
+    }
+
+    fn apply_xsph_viscosity(&mut self) {
+        let (positions, velocities, boundaries, densities): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) = self
+            .particle_chain()
+            .map(|p| (p.position, p.velocity, p.boundary, p.density))
+            .multiunzip();
+        let fluid_params = self.fluid_params;
+
+        self.particles.par_iter_mut().for_each(|particle| {
+            for &neighbor_index in &particle.neighbors {
+                if boundaries[neighbor_index] {
+                    continue;
+                }
+                let kernel_value =
+                    fluid_params.kernel(particle.position - positions[neighbor_index]);
+                let relative_velocity = particle.velocity - velocities[neighbor_index];
+                particle.velocity -= fluid_params.xsph_viscosity / densities[neighbor_index]
+                    * kernel_value
+                    * relative_velocity;
+            }
+        });
     }
 
     fn compute_phis(&mut self) {
@@ -232,6 +261,7 @@ impl Simulator {
             density += fluid_params.kernel(Vec3::ZERO);
             sum_gradient_squared += self_gradient.length_squared();
             let constraint = (density / fluid_params.target_density - 1.0).max(0.0);
+            particle.density = density;
             particle.lambda = -constraint / (sum_gradient_squared + EPSILON);
         });
     }

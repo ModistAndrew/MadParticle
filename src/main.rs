@@ -55,10 +55,11 @@ fn setup(
         simulator::FluidParams {
             kernel_radius: radius * 4.0,
             target_density: 1.0 / (2.0 * radius).powi(3),
+            xsph_viscosity: 0.02,
         },
     );
 
-    let particles = generator.aabb(Vec3::new(-1.0, 0.0, -1.0), Vec3::new(1.0, 10.0, 1.0));
+    let particles = generator.aabb(Vec3::new(-0.5, 0.0, -0.5), Vec3::new(0.5, 5.0, 0.5));
     particles.iter().enumerate().for_each(|(i, &p)| {
         simulator.add_particle(p);
         commands.spawn((
@@ -69,7 +70,7 @@ fn setup(
         ));
     });
 
-    let boundaries = generator.open_box(Vec3::new(-2.0, -1.0, -2.0), Vec3::new(2.0, 10.0, 2.0));
+    let boundaries = generator.open_box(Vec3::new(-2.0, -1.0, -2.0), Vec3::new(2.0, 3.0, 2.0));
     boundaries.iter().for_each(|&p| {
         simulator.add_boundary(p);
         // commands.spawn((
