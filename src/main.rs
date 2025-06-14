@@ -1,6 +1,10 @@
+mod generator;
 mod simulator;
-use crate::simulator::{Particle, Simulator};
+
+use crate::generator::Generator;
+use crate::simulator::Simulator;
 use bevy::prelude::*;
+
 #[derive(Component)]
 struct Index(usize);
 #[derive(Component)]
@@ -18,13 +22,10 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Add camera
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-
-    // Add light
     commands.spawn((
         PointLight {
             shadows_enabled: true,
@@ -33,34 +34,52 @@ fn setup(
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
 
-    // Particle mesh and material
-    let sphere_mesh = meshes.add(Mesh::from(Sphere::new(0.1)));
+    let radius = 0.1;
 
-    let material = materials.add(StandardMaterial {
+    // Particle mesh and material
+    let sphere_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
+
+    let particle_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.8, 0.2, 0.2),
-        metallic: 0.7,
-        perceptual_roughness: 0.2,
+        ..default()
+    });
+    let boundary_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.2, 0.8, 0.2),
         ..default()
     });
 
-    let mut particles = Vec::new();
+    let generator = Generator::new(radius);
+    let mut simulator = Simulator::new(
+        0.04,
+        Vec3::new(0.0, -9.81, 0.0),
+        simulator::FluidParams {
+            kernel_radius: radius * 4.0,
+            target_density: 1.0 / (2.0 * radius).powi(3),
+        },
+    );
 
-    for i in 0..5000 {
-        let x = i % 10 - 5;
-        let z = (i / 10) % 10 - 5;
-        let y = i / 100;
-        let position = Vec3::new(x as f32 * 0.2, y as f32 * 0.2, z as f32 * 0.2);
-
-        particles.push(Particle::new(position));
+    let particles = generator.aabb(Vec3::new(-1.0, 0.0, -1.0), Vec3::new(1.0, 10.0, 1.0));
+    particles.iter().enumerate().for_each(|(i, &p)| {
+        simulator.add_particle(p);
         commands.spawn((
             Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(material.clone()),
-            Transform::from_translation(position),
-            Index(i as usize),
+            MeshMaterial3d(particle_material.clone()),
+            Transform::from_translation(p),
+            Index(i),
         ));
-    }
+    });
 
-    commands.spawn(SimulatorComponent(Simulator::new(particles)));
+    let boundaries = generator.open_box(Vec3::new(-2.0, -1.0, -2.0), Vec3::new(2.0, 10.0, 2.0));
+    boundaries.iter().for_each(|&p| {
+        simulator.add_boundary(p);
+        // commands.spawn((
+        //     Mesh3d(sphere_mesh.clone()),
+        //     MeshMaterial3d(boundary_material.clone()),
+        //     Transform::from_translation(p),
+        // ));
+    });
+
+    commands.spawn(SimulatorComponent(simulator));
 }
 
 fn pbd_step(
