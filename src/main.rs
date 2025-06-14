@@ -56,12 +56,12 @@ fn setup(
             kernel_radius: radius * 4.0,
             target_density: 1.0 / (2.0 * radius).powi(3),
             viscosity: 0.02,
-            surface_tension: 0.5,
-            adhesion: 0.0,
+            surface_tension: 1.0,
+            adhesion: 10.0,
         },
     );
 
-    let particles = generator.aabb(Vec3::new(-0.5, 0.0, -0.5), Vec3::new(0.5, 5.0, 0.5));
+    let particles = generator.aabb(Vec3::new(-0.5, 0.0, -0.5), Vec3::new(0.5, 1.0, 0.5));
     particles.iter().enumerate().for_each(|(i, &p)| {
         simulator.add_particle(p);
         commands.spawn((

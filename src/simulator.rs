@@ -76,6 +76,17 @@ impl FluidParams {
             0.0
         }
     }
+
+    fn adhesion_kernel(&self, dir: Vec3) -> f32 {
+        let h = self.kernel_radius;
+        let r = dir.length();
+        let c = 0.007 / h.powf(3.25);
+        c * if 2.0 * r > h && r <= h {
+            (-4.0 * r.powi(2) / h + 6.0 * r - 2.0 * h).powf(0.25)
+        } else {
+            0.0
+        }
+    }
 }
 
 pub struct Simulator {
@@ -116,6 +127,7 @@ impl Simulator {
         self.update_densities();
         self.update_normal();
         self.apply_surface_tension();
+        self.apply_adhesion();
         for particle in &mut self.particles {
             particle.velocity += particle.force * self.step_dt;
         }
@@ -191,6 +203,27 @@ impl Simulator {
                     -fluid_params.surface_tension * (particle.normal - normals[j]);
                 let k = 2.0 * fluid_params.target_density / (particle.density + densities[j]);
                 particle.force += k * (cohesion_force + curvature_force);
+            }
+        });
+    }
+
+    fn apply_adhesion(&mut self) {
+        let (positions, boundaries, phis): (Vec<_>, Vec<_>, Vec<_>) = self
+            .particle_chain()
+            .map(|p| (p.position, p.boundary, p.phi))
+            .multiunzip();
+        let fluid_params = self.fluid_params;
+
+        self.particles.par_iter_mut().for_each(|particle| {
+            for &j in &particle.neighbors {
+                if !boundaries[j] {
+                    continue;
+                }
+                let dir = particle.position - positions[j];
+                particle.force += -fluid_params.adhesion
+                    * phis[j]
+                    * fluid_params.adhesion_kernel(dir)
+                    * dir.normalize();
             }
         });
     }
