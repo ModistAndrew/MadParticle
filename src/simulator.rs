@@ -13,6 +13,8 @@ struct Particle {
     density: f32,
     lambda: f32,
     phi: f32,
+    normal: Vec3,
+    force: Vec3,
 }
 
 impl Particle {
@@ -26,6 +28,8 @@ impl Particle {
             density: 0.0,
             lambda: 0.0, // always 0.0 for boundary particles
             phi: 1.0,    // always 1.0 for fluid particles
+            normal: Vec3::ZERO,
+            force: Vec3::ZERO,
         }
     }
 }
@@ -34,28 +38,43 @@ impl Particle {
 pub struct FluidParams {
     pub kernel_radius: f32,
     pub target_density: f32,
-    pub xsph_viscosity: f32,
+    pub viscosity: f32,
+    pub surface_tension: f32,
+    pub adhesion: f32,
 }
 
 impl FluidParams {
     fn kernel(&self, dir: Vec3) -> f32 {
         let h = self.kernel_radius;
         let r = dir.length();
+        let c = 315.0 / 64.0 / PI / h.powi(3);
         if r >= h {
             return 0.0;
         }
-        let c = 315.0 / 64.0 / PI / h.powi(3);
         c * (1.0 - r.powi(2) / h.powi(2)).powi(3)
     }
 
     fn kernel_gradient(&self, dir: Vec3) -> Vec3 {
         let h = self.kernel_radius;
         let r = dir.length();
+        let c = -45.0 / PI / h.powi(6);
         if r >= h {
             return Vec3::ZERO;
         }
-        let c = -45.0 / PI / h.powi(6);
         c * (h - r).powi(2) * dir.normalize()
+    }
+
+    fn cohesion_kernel(&self, dir: Vec3) -> f32 {
+        let h = self.kernel_radius;
+        let r = dir.length();
+        let c = 32.0 / PI / h.powi(9);
+        c * if r > 0.0 && 2.0 * r <= h {
+            2.0 * (h - r).powi(3) * r.powi(3) - h.powi(6) / 64.0
+        } else if 2.0 * r > h && r <= h {
+            (h - r).powi(3) * r.powi(3)
+        } else {
+            0.0
+        }
     }
 }
 
@@ -89,13 +108,24 @@ impl Simulator {
     pub fn step(&mut self) {
         const SOLVER_ITERATIONS: usize = 5;
         let current_time = std::time::Instant::now();
+
         for particle in &mut self.particles {
-            particle.velocity += self.gravity * self.step_dt;
+            particle.force = self.gravity;
+        }
+        self.update_neighbors();
+        self.update_densities();
+        self.update_normal();
+        self.apply_surface_tension();
+        for particle in &mut self.particles {
+            particle.velocity += particle.force * self.step_dt;
+        }
+        for particle in &mut self.particles {
             particle.position = particle.old_position + particle.velocity * self.step_dt;
         }
 
         for _ in 0..SOLVER_ITERATIONS {
             self.update_neighbors();
+            self.update_densities();
             self.update_lambdas();
             self.update_deltas();
         }
@@ -103,7 +133,7 @@ impl Simulator {
         for particle in &mut self.particles {
             particle.velocity = (particle.position - particle.old_position) / self.step_dt;
         }
-        self.apply_xsph_viscosity();
+        self.apply_viscosity();
         for particle in &mut self.particles {
             particle.old_position = particle.position;
         }
@@ -120,7 +150,52 @@ impl Simulator {
         self.compute_phis();
     }
 
-    fn apply_xsph_viscosity(&mut self) {
+    fn update_normal(&mut self) {
+        let (positions, boundaries, densities): (Vec<_>, Vec<_>, Vec<_>) = self
+            .particle_chain()
+            .map(|p| (p.position, p.boundary, p.density))
+            .multiunzip();
+        let fluid_params = self.fluid_params;
+
+        self.particles.par_iter_mut().for_each(|particle| {
+            let mut normal = Vec3::ZERO;
+            for &j in &particle.neighbors {
+                if boundaries[j] {
+                    continue;
+                }
+                let dir = particle.position - positions[j];
+                normal += self.fluid_params.kernel_gradient(dir) / densities[j];
+            }
+            normal *= fluid_params.kernel_radius;
+            particle.normal = normal;
+        });
+    }
+
+    fn apply_surface_tension(&mut self) {
+        let (positions, boundaries, normals, densities): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) = self
+            .particle_chain()
+            .map(|p| (p.position, p.boundary, p.normal, p.density))
+            .multiunzip();
+        let fluid_params = self.fluid_params;
+
+        self.particles.par_iter_mut().for_each(|particle| {
+            for &j in &particle.neighbors {
+                if boundaries[j] {
+                    continue;
+                }
+                let dir = particle.position - positions[j];
+                let cohesion_force = -fluid_params.surface_tension
+                    * fluid_params.cohesion_kernel(dir)
+                    * dir.normalize();
+                let curvature_force =
+                    -fluid_params.surface_tension * (particle.normal - normals[j]);
+                let k = 2.0 * fluid_params.target_density / (particle.density + densities[j]);
+                particle.force += k * (cohesion_force + curvature_force);
+            }
+        });
+    }
+
+    fn apply_viscosity(&mut self) {
         let (positions, velocities, boundaries, densities): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) = self
             .particle_chain()
             .map(|p| (p.position, p.velocity, p.boundary, p.density))
@@ -135,7 +210,7 @@ impl Simulator {
                 let kernel_value =
                     fluid_params.kernel(particle.position - positions[neighbor_index]);
                 let relative_velocity = particle.velocity - velocities[neighbor_index];
-                particle.velocity -= fluid_params.xsph_viscosity / densities[neighbor_index]
+                particle.velocity -= fluid_params.viscosity / densities[neighbor_index]
                     * kernel_value
                     * relative_velocity;
             }
@@ -236,6 +311,24 @@ impl Simulator {
             });
     }
 
+    fn update_densities(&mut self) {
+        let (positions, phis): (Vec<_>, Vec<_>) = self
+            .particle_chain()
+            .map(|p| (p.position, p.phi))
+            .multiunzip();
+        let fluid_params = self.fluid_params;
+
+        self.particles.par_iter_mut().for_each(|particle| {
+            let mut density = 0.0;
+            for &neighbor_index in &particle.neighbors {
+                let dir = particle.position - positions[neighbor_index];
+                density += phis[neighbor_index] * fluid_params.kernel(dir);
+            }
+            density += fluid_params.kernel(Vec3::ZERO);
+            particle.density = density;
+        });
+    }
+
     fn update_lambdas(&mut self) {
         const EPSILON: f32 = 1e-6;
         let (positions, boundaries, phis): (Vec<_>, Vec<_>, Vec<_>) = self
@@ -245,12 +338,10 @@ impl Simulator {
         let fluid_params = self.fluid_params;
 
         self.particles.par_iter_mut().for_each(|particle| {
-            let mut density = 0.0;
             let mut sum_gradient_squared = 0.0;
             let mut self_gradient = Vec3::ZERO;
             for &neighbor_index in &particle.neighbors {
                 let dir = particle.position - positions[neighbor_index];
-                density += phis[neighbor_index] * fluid_params.kernel(dir);
                 let gradient = phis[neighbor_index] * fluid_params.kernel_gradient(dir)
                     / fluid_params.target_density;
                 if !boundaries[neighbor_index] {
@@ -258,10 +349,8 @@ impl Simulator {
                 }
                 self_gradient += gradient;
             }
-            density += fluid_params.kernel(Vec3::ZERO);
             sum_gradient_squared += self_gradient.length_squared();
-            let constraint = (density / fluid_params.target_density - 1.0).max(0.0);
-            particle.density = density;
+            let constraint = (particle.density / fluid_params.target_density - 1.0).max(0.0);
             particle.lambda = -constraint / (sum_gradient_squared + EPSILON);
         });
     }

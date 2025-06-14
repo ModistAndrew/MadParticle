@@ -34,7 +34,7 @@ fn setup(
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
 
-    let radius = 0.1;
+    let radius = 0.05;
 
     // Particle mesh and material
     let sphere_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
@@ -55,7 +55,9 @@ fn setup(
         simulator::FluidParams {
             kernel_radius: radius * 4.0,
             target_density: 1.0 / (2.0 * radius).powi(3),
-            xsph_viscosity: 0.02,
+            viscosity: 0.02,
+            surface_tension: 0.5,
+            adhesion: 0.0,
         },
     );
 
