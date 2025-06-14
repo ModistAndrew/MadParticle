@@ -56,12 +56,13 @@ fn setup(
             kernel_radius: radius * 4.0,
             target_density: 1.0 / (2.0 * radius).powi(3),
             viscosity: 0.5,
-            surface_tension: 1.0,
-            adhesion: 10.0,
+            surface_tension: 5.0,
+            adhesion: 5.0,
         },
     );
 
-    let particles = generator.aabb(Vec3::new(-0.5, 2.0, -0.5), Vec3::new(0.5, 8.0, 0.5));
+    let particles = Generator::from_csv("assets/output.csv")
+        .unwrap_or_else(|e| panic!("Failed to load particles: {}", e));
     particles.iter().enumerate().for_each(|(i, &p)| {
         simulator.add_particle(p);
         commands.spawn((
@@ -72,8 +73,7 @@ fn setup(
         ));
     });
 
-    let boundaries = Generator::from_csv("assets/output.csv")
-        .unwrap_or_else(|e| panic!("Failed to load boundaries: {}", e));
+    let boundaries = generator.aabb(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, -2.0, 5.0));
     boundaries.iter().for_each(|&p| {
         simulator.add_boundary(p);
         commands.spawn((

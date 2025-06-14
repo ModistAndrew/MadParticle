@@ -62,7 +62,7 @@ def obj_to_particle_insides_sdf(obj_file_path, output_csv_path, particle_radius)
 
 if __name__ == "__main__":
     obj_to_particle_insides_sdf(
-        "../assets/cube.obj",
+        "../assets/ball.obj",
         "../assets/output.csv",
         particle_radius=0.05
     )
