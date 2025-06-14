@@ -50,7 +50,7 @@ fn setup(
 
     let generator = Generator::new(radius);
     let mut simulator = Simulator::new(
-        0.04,
+        0.01,
         Vec3::new(0.0, -9.81, 0.0),
         simulator::FluidParams {
             kernel_radius: radius * 4.0,
@@ -78,7 +78,7 @@ fn setup(
         //     Transform::from_translation(p),
         // ));
     });
-
+    simulator.init();
     commands.spawn(SimulatorComponent(simulator));
 }
 

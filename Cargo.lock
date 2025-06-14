@@ -3208,6 +3208,7 @@ name = "particle"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "itertools 0.14.0",
  "rand 0.9.1",
  "rayon",
  "rstar",
