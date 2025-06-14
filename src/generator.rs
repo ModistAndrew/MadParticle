@@ -1,4 +1,7 @@
 use bevy::math::Vec3;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 pub struct Generator {
     radius: f32,
@@ -52,5 +55,34 @@ impl Generator {
             }
         }
         points
+    }
+
+    pub fn from_csv(path: &str) -> Result<Vec<Vec3>, String> {
+        let file =
+            File::open(Path::new(path)).map_err(|e| format!("Failed to open file: {}", e))?;
+        let reader = BufReader::new(file);
+        let mut particles = Vec::new();
+        for (i, line) in reader.lines().enumerate() {
+            let line = line.map_err(|e| format!("Error reading line {}: {}", i + 1, e))?;
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() < 3 {
+                return Err(format!(
+                    "Invalid format at line {}: expected 3 values",
+                    i + 1
+                ));
+            }
+            let x = parts[0]
+                .parse::<f32>()
+                .map_err(|e| format!("Error parsing x at line {}: {}", i + 1, e))?;
+            let y = parts[1]
+                .parse::<f32>()
+                .map_err(|e| format!("Error parsing y at line {}: {}", i + 1, e))?;
+            let z = parts[2]
+                .parse::<f32>()
+                .map_err(|e| format!("Error parsing z at line {}: {}", i + 1, e))?;
+            particles.push(Vec3::new(x, y, z));
+        }
+        println!("Loaded {} particles from {}", particles.len(), path);
+        Ok(particles)
     }
 }

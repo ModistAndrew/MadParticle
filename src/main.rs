@@ -55,13 +55,13 @@ fn setup(
         simulator::FluidParams {
             kernel_radius: radius * 4.0,
             target_density: 1.0 / (2.0 * radius).powi(3),
-            viscosity: 0.02,
+            viscosity: 0.5,
             surface_tension: 1.0,
             adhesion: 10.0,
         },
     );
 
-    let particles = generator.aabb(Vec3::new(-0.5, 0.0, -0.5), Vec3::new(0.5, 1.0, 0.5));
+    let particles = generator.aabb(Vec3::new(-0.5, 2.0, -0.5), Vec3::new(0.5, 8.0, 0.5));
     particles.iter().enumerate().for_each(|(i, &p)| {
         simulator.add_particle(p);
         commands.spawn((
@@ -72,14 +72,15 @@ fn setup(
         ));
     });
 
-    let boundaries = generator.open_box(Vec3::new(-2.0, -1.0, -2.0), Vec3::new(2.0, 3.0, 2.0));
+    let boundaries = Generator::from_csv("assets/output.csv")
+        .unwrap_or_else(|e| panic!("Failed to load boundaries: {}", e));
     boundaries.iter().for_each(|&p| {
         simulator.add_boundary(p);
-        // commands.spawn((
-        //     Mesh3d(sphere_mesh.clone()),
-        //     MeshMaterial3d(boundary_material.clone()),
-        //     Transform::from_translation(p),
-        // ));
+        commands.spawn((
+            Mesh3d(sphere_mesh.clone()),
+            MeshMaterial3d(boundary_material.clone()),
+            Transform::from_translation(p),
+        ));
     });
     simulator.init();
     commands.spawn(SimulatorComponent(simulator));

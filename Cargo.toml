@@ -5,7 +5,5 @@ edition = "2024"
 
 [dependencies]
 bevy = "0.16.0"
-rand = "0.9.1"
-rstar = "0.12.2"
 rayon = "1.10.0"
 itertools = "0.14.0"
