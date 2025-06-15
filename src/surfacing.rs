@@ -2,7 +2,7 @@ use crate::simulator::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::math::Vec3;
 
-const DENSITY_THRESHOLD: f32 = 200.0;
+const DENSITY_THRESHOLD: f32 = 10.0;
 const BOUNDS: Vec3 = Vec3::new(2.5, 2.5, 2.5);
 const VOXEL_SIZE: f32 = 0.25;
 const TOTAL_VOXELS: Vec3 = Vec3::new(BOUNDS.x / VOXEL_SIZE, BOUNDS.y / VOXEL_SIZE, BOUNDS.z / VOXEL_SIZE);
@@ -402,9 +402,7 @@ pub fn surfacing(fluid_particles: &Vec<Particle>, params: FluidParams) -> (Vec<V
                         break;
                     }
                     let vertex_id = vertex_index[ii][jj][kk][MARCHING_CUBES_TABLE[code][id] as usize];
-                    if vertex_id < 0 {
-                        continue;
-                    }
+                    assert!(vertex_id >= 0);
                     triangle_index.push(vertex_id as u32);
                 }
             }

@@ -5,7 +5,9 @@ mod surfacing;
 use crate::generator::Generator;
 use crate::simulator::Simulator;
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
+use std::fs::File;
+use std::io::Write;
 
 #[derive(Component)]
 struct Index(usize);
@@ -92,8 +94,9 @@ fn setup(
 
     let surfacing_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.2, 0.5, 0.8),
-        metallic: 0.7,
-        perceptual_roughness: 0.2,
+        perceptual_roughness: 0.5,
+        metallic: 0.5,
+        reflectance: 1.0,
         ..default()
     });
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -112,6 +115,8 @@ fn setup(
     commands.insert_resource(SurfaceMeshHandle(mesh_handle));
 
 }
+
+static mut CNT: usize = 0;
 
 fn pbd_step(
     mut particles: Query<(&Index, &mut Transform)>,
@@ -137,5 +142,66 @@ fn pbd_step(
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
         mesh.insert_indices(Indices::U32(triangle_index));
+        let cnt = unsafe { CNT };
+        let mut path = "output/exported_mesh".to_string();
+        path += &cnt.to_string();
+        path += ".obj";
+        unsafe { CNT += 1; }
+        if let Err(e) = export_mesh_to_obj(mesh, &path) {
+            eprintln!("Failed to export mesh: {}", e);
+        } else {
+            println!("Mesh exported to exported_mesh.obj");
+        }
     }
+}
+
+fn export_mesh_to_obj(
+    mesh: &Mesh,
+    path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // 获取顶点位置
+    let vertices = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+        Some(VertexAttributeValues::Float32x3(positions)) => positions,
+        _ => return Err("Mesh missing positions".into()),
+    };
+
+    // 获取法线
+    let normals = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+        Some(VertexAttributeValues::Float32x3(normals)) => normals,
+        _ => return Err("Mesh missing normals".into()),
+    };
+
+    // 获取面索引
+    let indices = match mesh.indices() {
+        Some(Indices::U32(indices)) => indices,
+        _ => return Err("Mesh missing indices or wrong format".into()),
+    };
+
+    // 确保输出目录存在
+    std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap())?;
+    // 写入文件
+    let mut file = File::create(path)?;
+
+    // Write vertices
+    for v in vertices {
+        writeln!(file, "v {} {} {}", v[0], v[1], v[2])?;
+    }
+    // Write normals
+    for n in normals {
+        writeln!(file, "vn {} {} {}", n[0], n[1], n[2])?;
+    }
+    // Write faces (OBJ indices are 1-based)
+    for face in indices.chunks(3) {
+        if face.len() == 3 {
+            // Use the same index for vertex and normal
+            writeln!(
+                file,
+                "f {0}//{0} {1}//{1} {2}//{2}",
+                face[0] + 1,
+                face[1] + 1,
+                face[2] + 1
+            )?;
+        }
+    }
+    Ok(())
 }
