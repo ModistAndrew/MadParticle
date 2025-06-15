@@ -159,38 +159,30 @@ fn export_mesh_to_obj(
     mesh: &Mesh,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // 获取顶点位置
     let vertices = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(VertexAttributeValues::Float32x3(positions)) => positions,
         _ => return Err("Mesh missing positions".into()),
     };
 
-    // 获取法线
     let normals = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
         Some(VertexAttributeValues::Float32x3(normals)) => normals,
         _ => return Err("Mesh missing normals".into()),
     };
 
-    // 获取面索引
     let indices = match mesh.indices() {
         Some(Indices::U32(indices)) => indices,
         _ => return Err("Mesh missing indices or wrong format".into()),
     };
 
-    // 确保输出目录存在
     std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap())?;
-    // 写入文件
     let mut file = File::create(path)?;
 
-    // Write vertices
     for v in vertices {
         writeln!(file, "v {} {} {}", v[0], v[1], v[2])?;
     }
-    // Write normals
     for n in normals {
         writeln!(file, "vn {} {} {}", n[0], n[1], n[2])?;
     }
-    // Write faces (OBJ indices are 1-based)
     for face in indices.chunks(3) {
         if face.len() == 3 {
             // Use the same index for vertex and normal
