@@ -92,16 +92,18 @@ impl FluidParams {
 pub struct Simulator {
     pub particles: Vec<Particle>,
     boundaries: Vec<Particle>,
+    bounds: Vec3,
     step_dt: f32,
     gravity: Vec3,
     fluid_params: FluidParams,
 }
 
 impl Simulator {
-    pub fn new(step_dt: f32, gravity: Vec3, fluid_params: FluidParams) -> Self {
+    pub fn new(step_dt: f32, gravity: Vec3, bounds: Vec3, fluid_params: FluidParams) -> Self {
         Self {
             particles: Vec::new(),
             boundaries: Vec::new(),
+            bounds,
             step_dt,
             gravity,
             fluid_params,
@@ -120,6 +122,11 @@ impl Simulator {
         const SOLVER_ITERATIONS: usize = 5;
         let current_time = std::time::Instant::now();
 
+        self.particles.retain(|particle| {
+            particle.position.x.abs() <= self.bounds.x
+                && particle.position.y.abs() <= self.bounds.y
+                && particle.position.z.abs() <= self.bounds.z
+        });
         for particle in &mut self.particles {
             particle.force = self.gravity;
         }

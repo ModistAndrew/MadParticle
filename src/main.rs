@@ -1,11 +1,12 @@
 mod generator;
 mod grid;
 mod simulator;
-mod surfacing;
+mod surfacer;
+mod wrapper;
 
 use crate::generator::Generator;
 use crate::simulator::Simulator;
-use crate::surfacing::Surfacer;
+use crate::surfacer::Surfacer;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use std::fs::File;
@@ -52,6 +53,7 @@ fn setup(
         surface_tension: 5.0,
         adhesion: 5.0,
     };
+    let bounds = Vec3::new(2.5, 2.5, 2.5);
 
     // Particle mesh and material
     let sphere_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
@@ -64,7 +66,7 @@ fn setup(
         ..default()
     });
     let generator = Generator::new(radius);
-    let mut simulator = Simulator::new(0.01, Vec3::new(0.0, -9.81, 0.0), params);
+    let mut simulator = Simulator::new(0.01, Vec3::new(0.0, -9.81, 0.0), bounds, params);
     let particles = Generator::from_csv("assets/output.csv")
         .unwrap_or_else(|e| panic!("Failed to load particles: {}", e));
     particles.iter().enumerate().for_each(|(i, &p)| {
@@ -96,7 +98,7 @@ fn setup(
         ..default()
     });
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
-    let surfacer = Surfacer::new(10.0, Vec3::new(2.5, 2.5, 2.5), 0.125, params);
+    let surfacer = Surfacer::new(10.0, bounds, 0.125, params);
     let (position, normal, triangle_index) = surfacer.surface(&Vec::new());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
