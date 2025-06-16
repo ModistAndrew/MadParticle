@@ -1,7 +1,7 @@
+use crate::grid::Grid;
 use bevy::math::Vec3;
 use itertools::Itertools;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::f32::consts::PI;
 
 pub struct Particle {
@@ -253,44 +253,14 @@ impl Simulator {
     fn compute_phis(&mut self) {
         println!("Precomputing boundary phi values...");
         let radius = self.fluid_params.kernel_radius;
-        let cell_size = radius;
         let boundary_positions: Vec<Vec3> = self.boundaries.iter().map(|p| p.position).collect();
-        let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
-        for (i, &position) in boundary_positions.iter().enumerate() {
-            let cell = (
-                (position.x / cell_size).floor() as i32,
-                (position.y / cell_size).floor() as i32,
-                (position.z / cell_size).floor() as i32,
-            );
-            grid.entry(cell).or_default().push(i);
-        }
+        let grid = Grid::new(radius, boundary_positions);
         let fluid_params = self.fluid_params;
         self.boundaries.par_iter_mut().for_each(|particle| {
-            let position = particle.position;
-            let cell = (
-                (position.x / cell_size).floor() as i32,
-                (position.y / cell_size).floor() as i32,
-                (position.z / cell_size).floor() as i32,
-            );
-            let mut neighbors = Vec::new();
-            for dx in -1..=1 {
-                for dy in -1..=1 {
-                    for dz in -1..=1 {
-                        let neighbor_cell = (cell.0 + dx, cell.1 + dy, cell.2 + dz);
-                        if let Some(cell_particles) = grid.get(&neighbor_cell) {
-                            for &neighbor_index in cell_particles {
-                                let dist = position.distance(boundary_positions[neighbor_index]);
-                                if dist < radius {
-                                    neighbors.push(neighbor_index);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let neighbors = grid.neighbors(particle.position);
             let mut d = 0.0;
             for &neighbor_index in &neighbors {
-                let dir = position - boundary_positions[neighbor_index];
+                let dir = particle.position - grid.position(neighbor_index);
                 d += fluid_params.kernel(dir);
             }
             particle.phi = fluid_params.target_density / d;
@@ -300,47 +270,13 @@ impl Simulator {
 
     fn update_neighbors(&mut self) {
         let radius = self.fluid_params.kernel_radius;
-        let cell_size = radius;
         let positions: Vec<Vec3> = self.particle_chain().map(|p| p.position).collect();
-        let mut grid: HashMap<(i32, i32, i32), Vec<usize>> = HashMap::new();
-        for (i, &position) in positions.iter().enumerate() {
-            let cell = (
-                (position.x / cell_size).floor() as i32,
-                (position.y / cell_size).floor() as i32,
-                (position.z / cell_size).floor() as i32,
-            );
-            grid.entry(cell).or_default().push(i);
-        }
+        let grid = Grid::new(radius, positions);
         self.particles
             .par_iter_mut()
             .enumerate()
             .for_each(|(i, particle)| {
-                let position = particle.position;
-                let cell = (
-                    (position.x / cell_size).floor() as i32,
-                    (position.y / cell_size).floor() as i32,
-                    (position.z / cell_size).floor() as i32,
-                );
-                let mut neighbors = Vec::new();
-                for dx in -1..=1 {
-                    for dy in -1..=1 {
-                        for dz in -1..=1 {
-                            let neighbor_cell = (cell.0 + dx, cell.1 + dy, cell.2 + dz);
-                            if let Some(cell_particles) = grid.get(&neighbor_cell) {
-                                for &neighbor_index in cell_particles {
-                                    if neighbor_index == i {
-                                        continue;
-                                    }
-                                    let dist = position.distance(positions[neighbor_index]);
-                                    if dist < radius {
-                                        neighbors.push(neighbor_index);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                particle.neighbors = neighbors;
+                particle.neighbors = grid.neighbors_exclude(particle.position, i);
             });
     }
 

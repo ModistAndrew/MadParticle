@@ -1,6 +1,7 @@
 mod generator;
 mod simulator;
 mod surfacing;
+mod grid;
 
 use crate::generator::Generator;
 use crate::simulator::Simulator;
