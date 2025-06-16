@@ -10,14 +10,11 @@ use crate::generator::Generator;
 use crate::wrapper::{CommonParams, SimulatorParams, SurfacerParams, Wrapper};
 use bevy::prelude::*;
 use std::env::args;
-use std::io::Write;
 
 #[derive(Component)]
 struct Index(usize);
 #[derive(Component)]
 struct WrapperComponent(Wrapper);
-#[derive(Resource)]
-struct SurfaceMeshHandle(Handle<Mesh>);
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -39,8 +36,8 @@ fn main() {
 fn init_wrapper() -> Wrapper {
     let radius = 0.05;
     let generator = Generator::new(radius);
-    let particles = generator.aabb(Vec3::new(-1.0, 0.0, -1.0), Vec3::new(1.0, 2.0, 1.0));
-    let boundaries = generator.open_box(Vec3::new(-2.0, -2.0, -2.0), Vec3::new(2.0, 4.0, 2.0));
+    let particles = generator.aabb(Vec3::new(-2.0, 0.0, -2.0), Vec3::new(2.0, 4.0, 2.0));
+    let boundaries = generator.closed_box(Vec3::new(-4.0, -1.0, -4.0), Vec3::new(4.0, 7.0, 4.0));
     let wrapper = Wrapper::new(
         CommonParams {
             radius,
@@ -49,18 +46,18 @@ fn init_wrapper() -> Wrapper {
             adhesion: 0.1,
         },
         SimulatorParams {
-            step_dt: 1.0 / 120.0,
+            step_dt: 1.0 / 1200.0,
             gravity: Vec3::new(0.0, -9.81, 0.0),
-            min_max: Aabb::new(Vec3::new(-25.0, -25.0, -25.0), Vec3::new(25.0, 25.0, 25.0)),
+            min_max: Aabb::new(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, 8.0, 5.0)),
         },
         SurfacerParams {
             density_threshold: 0.7,
-            min_max: Aabb::new(Vec3::new(-2.5, -2.5, -2.5), Vec3::new(2.5, 2.5, 2.5)),
+            min_max: Aabb::new(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, 8.0, 5.0)),
         },
         particles,
         boundaries,
-        100,
-        "output/exported_mesh".to_string(),
+        20,
+        "output/mesh".to_string(),
     );
     wrapper
 }
