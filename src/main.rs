@@ -1,11 +1,11 @@
 mod generator;
+mod grid;
 mod simulator;
 mod surfacing;
-mod grid;
 
 use crate::generator::Generator;
 use crate::simulator::Simulator;
-use crate::surfacing::surfacing;
+use crate::surfacing::Surfacer;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use std::fs::File;
@@ -15,6 +15,8 @@ use std::io::Write;
 struct Index(usize);
 #[derive(Component)]
 struct SimulatorComponent(Simulator);
+#[derive(Component)]
+struct SurfacerComponent(Surfacer);
 #[derive(Resource)]
 struct SurfaceMeshHandle(Handle<Mesh>);
 fn main() {
@@ -44,16 +46,15 @@ fn setup(
 
     let radius = 0.05;
     let params = simulator::FluidParams {
-            kernel_radius: radius * 4.0,
-            target_density: 1.0 / (2.0 * radius).powi(3),
-            viscosity: 0.5,
-            surface_tension: 5.0,
-            adhesion: 5.0,
+        kernel_radius: radius * 4.0,
+        target_density: 1.0 / (2.0 * radius).powi(3),
+        viscosity: 0.5,
+        surface_tension: 5.0,
+        adhesion: 5.0,
     };
 
     // Particle mesh and material
     let sphere_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
-
     let particle_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.8, 0.2, 0.2),
         ..default()
@@ -62,14 +63,8 @@ fn setup(
         base_color: Color::srgb(0.2, 0.8, 0.2),
         ..default()
     });
-
     let generator = Generator::new(radius);
-    let mut simulator = Simulator::new(
-        0.01,
-        Vec3::new(0.0, -9.81, 0.0),
-        params
-    );
-
+    let mut simulator = Simulator::new(0.01, Vec3::new(0.0, -9.81, 0.0), params);
     let particles = Generator::from_csv("assets/output.csv")
         .unwrap_or_else(|e| panic!("Failed to load particles: {}", e));
     particles.iter().enumerate().for_each(|(i, &p)| {
@@ -81,7 +76,6 @@ fn setup(
         //     Index(i),
         // ));
     });
-
     let boundaries = generator.aabb(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, -2.0, 5.0));
     boundaries.iter().for_each(|&p| {
         simulator.add_boundary(p);
@@ -102,11 +96,11 @@ fn setup(
         ..default()
     });
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
-    let (position, normal, triangle_index) = surfacing(&Vec::new(), params);
+    let surfacer = Surfacer::new(10.0, Vec3::new(2.5, 2.5, 2.5), 0.125, params);
+    let (position, normal, triangle_index) = surfacer.surface(&Vec::new());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
     mesh.insert_indices(Indices::U32(triangle_index));
-
     let mesh_handle = meshes.add(mesh);
     commands.spawn((
         Mesh3d(mesh_handle.clone()),
@@ -115,7 +109,7 @@ fn setup(
         GlobalTransform::default(),
     ));
     commands.insert_resource(SurfaceMeshHandle(mesh_handle));
-
+    commands.spawn(SurfacerComponent(surfacer));
 }
 
 static mut CNT: usize = 0;
@@ -123,6 +117,7 @@ static mut CNT: usize = 0;
 fn pbd_step(
     mut particles: Query<(&Index, &mut Transform)>,
     mut simulator: Single<&mut SimulatorComponent>,
+    surfacer: Single<&SurfacerComponent>,
     mut meshes: ResMut<Assets<Mesh>>,
     mesh_handle: Res<SurfaceMeshHandle>,
 ) {
@@ -131,15 +126,7 @@ fn pbd_step(
         transform.translation = simulator.0.get_particle_position(id.0);
     }
 
-    let radius = 0.05;
-    let params = simulator::FluidParams {
-            kernel_radius: radius * 4.0,
-            target_density: 1.0 / (2.0 * radius).powi(3),
-            viscosity: 0.5,
-            surface_tension: 5.0,
-            adhesion: 5.0,
-    };
-    let (position, normal, triangle_index) = surfacing(&(simulator.0.particles), params);
+    let (position, normal, triangle_index) = surfacer.0.surface(&(simulator.0.particles));
     if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
@@ -148,7 +135,9 @@ fn pbd_step(
         let mut path = "output/exported_mesh".to_string();
         path += &cnt.to_string();
         path += ".obj";
-        unsafe { CNT += 1; }
+        unsafe {
+            CNT += 1;
+        }
         if let Err(e) = export_mesh_to_obj(mesh, &path) {
             eprintln!("Failed to export mesh: {}", e);
         } else {
@@ -157,10 +146,7 @@ fn pbd_step(
     }
 }
 
-fn export_mesh_to_obj(
-    mesh: &Mesh,
-    path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn export_mesh_to_obj(mesh: &Mesh, path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let vertices = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(VertexAttributeValues::Float32x3(positions)) => positions,
         _ => return Err("Mesh missing positions".into()),
