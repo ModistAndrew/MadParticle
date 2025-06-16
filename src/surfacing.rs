@@ -1,10 +1,10 @@
 use crate::simulator::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::math::Vec3;
+use rayon::prelude::*;
 
 const DENSITY_THRESHOLD: f32 = 10.0;
 const BOUNDS: Vec3 = Vec3::new(2.5, 2.5, 2.5);
-const VOXEL_SIZE: f32 = 0.25;
+const VOXEL_SIZE: f32 = 0.125;
 const TOTAL_VOXELS: Vec3 = Vec3::new(BOUNDS.x / VOXEL_SIZE, BOUNDS.y / VOXEL_SIZE, BOUNDS.z / VOXEL_SIZE);
 
 const MARCHING_CUBES_TABLE: [[i8; 16]; 256] = [
@@ -295,30 +295,44 @@ fn surfacing_gradient(fluid_particles: &Vec<Particle>, params: FluidParams, pos:
     ret
 }
 
+#[derive(Clone)]
+struct Voxel {
+    pos: Vec3,
+    value: f32,
+    gradient: Vec3
+}
+
 pub fn surfacing(fluid_particles: &Vec<Particle>, params: FluidParams) -> (Vec<Vec3>, Vec<Vec3>, Vec<u32>) {
-    let mut value: [[[f32; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1]
-        = [[[0.0; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1];
-    let mut gradient: [[[Vec3; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1]
-        = [[[Vec3::ZERO; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1];
+    let mut voxels =
+        vec![vec![vec![Voxel {
+            pos: Vec3::ZERO,
+            value: 0.0,
+            gradient: Vec3::ZERO,
+        }; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1];
+    let mut vertex_index = vec![vec![vec![[-1; 12]; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1];
     for i in -TOTAL_VOXELS.x as i32..=TOTAL_VOXELS.x as i32 {
         for j in -TOTAL_VOXELS.y as i32..=TOTAL_VOXELS.y as i32 {
             for k in -TOTAL_VOXELS.z as i32..=TOTAL_VOXELS.z as i32 {
-                let x = i as f32 * VOXEL_SIZE;
-                let y = j as f32 * VOXEL_SIZE;
-                let z = k as f32 * VOXEL_SIZE;
-                value[(i + TOTAL_VOXELS.x as i32) as usize]
-                     [(j + TOTAL_VOXELS.y as i32) as usize]
-                     [(k + TOTAL_VOXELS.z as i32) as usize]
-                    = surfacing_value(fluid_particles, params, Vec3::new(x, y, z));
-                gradient[(i + TOTAL_VOXELS.x as i32) as usize]
-                        [(j + TOTAL_VOXELS.y as i32) as usize]
-                        [(k + TOTAL_VOXELS.z as i32) as usize]
-                    = surfacing_gradient(fluid_particles, params, Vec3::new(x, y, z));
+                voxels[(i + TOTAL_VOXELS.x as i32) as usize]
+                      [(j + TOTAL_VOXELS.y as i32) as usize]
+                      [(k + TOTAL_VOXELS.z as i32) as usize].pos
+                    = Vec3 {
+                        x: i as f32 * VOXEL_SIZE,
+                        y: j as f32 * VOXEL_SIZE,
+                        z: k as f32 * VOXEL_SIZE
+                    };
             }
         }
     }
-    let mut vertex_index: [[[[i32; 12]; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1]
-        = [[[[-1; 12]; TOTAL_VOXELS.z as usize * 2 + 1]; TOTAL_VOXELS.y as usize * 2 + 1]; TOTAL_VOXELS.x as usize * 2 + 1];
+    voxels.par_iter_mut().for_each(|voxel_slice| {
+        voxel_slice.par_iter_mut().for_each(|voxel_row| {
+            voxel_row.par_iter_mut().for_each(|voxel| {
+                voxel.value = surfacing_value(fluid_particles, params, voxel.pos);
+                voxel.gradient = surfacing_gradient(fluid_particles, params, voxel.pos);
+            });
+        });
+    });
+
     let mut position: Vec<Vec3> = vec![];
     let mut normal: Vec<Vec3> = vec![];
     let mut triangle_index: Vec<u32> = vec![];
@@ -333,8 +347,8 @@ pub fn surfacing(fluid_particles: &Vec<Particle>, params: FluidParams) -> (Vec<V
                 for di in 0..2 {
                     for dj in 0..2 {
                         for dk in 0..2 {
-                            local_value[di][dj][dk] = value[ii + di][jj + dj][kk + dk];
-                            local_gradient[di][dj][dk] = gradient[ii + di][jj + dj][kk + dk];
+                            local_value[di][dj][dk] = voxels[ii + di][jj + dj][kk + dk].value;
+                            local_gradient[di][dj][dk] = voxels[ii + di][jj + dj][kk + dk].gradient;
                         }
                     }
                 }

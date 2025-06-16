@@ -4,6 +4,7 @@ mod surfacing;
 
 use crate::generator::Generator;
 use crate::simulator::Simulator;
+use crate::surfacing::surfacing;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use std::fs::File;
@@ -100,7 +101,7 @@ fn setup(
         ..default()
     });
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
-    let (position, normal, triangle_index) = surfacing::surfacing(&Vec::new(), params);
+    let (position, normal, triangle_index) = surfacing(&Vec::new(), params);
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
     mesh.insert_indices(Indices::U32(triangle_index));
@@ -137,7 +138,7 @@ fn pbd_step(
             surface_tension: 5.0,
             adhesion: 5.0,
     };
-    let (position, normal, triangle_index) = surfacing::surfacing(&(simulator.0.particles), params);
+    let (position, normal, triangle_index) = surfacing(&(simulator.0.particles), params);
     if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);
@@ -150,7 +151,7 @@ fn pbd_step(
         if let Err(e) = export_mesh_to_obj(mesh, &path) {
             eprintln!("Failed to export mesh: {}", e);
         } else {
-            println!("Mesh exported to exported_mesh.obj");
+            println!("Mesh exported to {}", path);
         }
     }
 }
