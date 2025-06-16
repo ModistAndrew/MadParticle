@@ -54,6 +54,8 @@ fn setup(
         adhesion: 5.0,
     };
     let bounds = Vec3::new(2.5, 2.5, 2.5);
+    let lower_bounds = Vec3::new(-bounds.x, -bounds.y, -bounds.z);
+    let upper_bounds = Vec3::new(bounds.x, bounds.y, bounds.z);
 
     // Particle mesh and material
     let sphere_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
@@ -98,7 +100,7 @@ fn setup(
         ..default()
     });
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
-    let surfacer = Surfacer::new(10.0, bounds, 0.125, params);
+    let surfacer = Surfacer::new(10.0, lower_bounds, upper_bounds, 0.125, params);
     let (position, normal, triangle_index) = surfacer.surface(&Vec::new());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, position);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normal);

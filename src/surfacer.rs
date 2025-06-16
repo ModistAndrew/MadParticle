@@ -13,6 +13,7 @@ struct Voxel {
 pub struct Surfacer {
     density_threshold: f32,
     voxel_size: f32,
+    lower_bounds: Vec3,
     total_voxels: Vec3,
     fluid_params: FluidParams,
 }
@@ -20,18 +21,20 @@ pub struct Surfacer {
 impl Surfacer {
     pub fn new(
         density_threshold: f32,
-        bounds: Vec3,
+        lower_bounds: Vec3,
+        upper_bounds: Vec3,
         voxel_size: f32,
         fluid_params: FluidParams,
     ) -> Self {
         let total_voxels = Vec3::new(
-            bounds.x / voxel_size,
-            bounds.y / voxel_size,
-            bounds.z / voxel_size,
+            (upper_bounds.x - lower_bounds.x) / voxel_size,
+            (upper_bounds.y - lower_bounds.y) / voxel_size,
+            (upper_bounds.z - lower_bounds.z) / voxel_size,
         );
         Surfacer {
             density_threshold,
             voxel_size,
+            lower_bounds,
             total_voxels,
             fluid_params,
         }
@@ -42,28 +45,25 @@ impl Surfacer {
 
         let mut voxels = vec![
             vec![
-                vec![Voxel::default(); self.total_voxels.z as usize * 2 + 1];
-                self.total_voxels.y as usize * 2 + 1
+                vec![Voxel::default(); self.total_voxels.z as usize + 1];
+                self.total_voxels.y as usize + 1
             ];
-            self.total_voxels.x as usize * 2 + 1
+            self.total_voxels.x as usize + 1
         ];
         let mut vertex_index = vec![
             vec![
-                vec![[-1; 12]; self.total_voxels.z as usize * 2 + 1];
-                self.total_voxels.y as usize * 2 + 1
+                vec![[-1; 12]; self.total_voxels.z as usize + 1];
+                self.total_voxels.y as usize + 1
             ];
-            self.total_voxels.x as usize * 2 + 1
+            self.total_voxels.x as usize + 1
         ];
-        for i in -self.total_voxels.x as i32..=self.total_voxels.x as i32 {
-            for j in -self.total_voxels.y as i32..=self.total_voxels.y as i32 {
-                for k in -self.total_voxels.z as i32..=self.total_voxels.z as i32 {
-                    voxels[(i + self.total_voxels.x as i32) as usize]
-                        [(j + self.total_voxels.y as i32) as usize]
-                        [(k + self.total_voxels.z as i32) as usize]
-                        .pos = Vec3::new(
-                        i as f32 * self.voxel_size,
-                        j as f32 * self.voxel_size,
-                        k as f32 * self.voxel_size,
+        for i in 0..=self.total_voxels.x as usize {
+            for j in 0..=self.total_voxels.y as usize {
+                for k in 0..=self.total_voxels.z as usize {
+                    voxels[i][j][k].pos = Vec3::new(
+                        i as f32 * self.voxel_size + self.lower_bounds.x,
+                        j as f32 * self.voxel_size + self.lower_bounds.y,
+                        k as f32 * self.voxel_size + self.lower_bounds.z,
                     );
                 }
             }
@@ -86,50 +86,47 @@ impl Surfacer {
         let mut position: Vec<Vec3> = vec![];
         let mut normal: Vec<Vec3> = vec![];
         let mut triangle_index: Vec<u32> = vec![];
-        for i in -self.total_voxels.x as i32..self.total_voxels.x as i32 {
-            for j in -self.total_voxels.y as i32..self.total_voxels.y as i32 {
-                for k in -self.total_voxels.z as i32..self.total_voxels.z as i32 {
+        for i in 0..self.total_voxels.x as usize {
+            for j in 0..self.total_voxels.y as usize {
+                for k in 0..self.total_voxels.z as usize {
                     let mut local_value: [[[f32; 2]; 2]; 2] = [[[0.0; 2]; 2]; 2];
                     let mut local_gradient: [[[Vec3; 2]; 2]; 2] = [[[Vec3::ZERO; 2]; 2]; 2];
-                    let ii = (i + self.total_voxels.x as i32) as usize;
-                    let jj = (j + self.total_voxels.y as i32) as usize;
-                    let kk = (k + self.total_voxels.z as i32) as usize;
                     for di in 0..2 {
                         for dj in 0..2 {
                             for dk in 0..2 {
-                                local_value[di][dj][dk] = voxels[ii + di][jj + dj][kk + dk].value;
+                                local_value[di][dj][dk] = voxels[i + di][j + dj][k + dk].value;
                                 local_gradient[di][dj][dk] =
-                                    voxels[ii + di][jj + dj][kk + dk].gradient;
+                                    voxels[i + di][j + dj][k + dk].gradient;
                             }
                         }
                     }
-                    if kk > 0 {
-                        vertex_index[ii][jj][kk][0] = vertex_index[ii][jj][kk - 1][4];
-                        vertex_index[ii][jj][kk][1] = vertex_index[ii][jj][kk - 1][5];
-                        vertex_index[ii][jj][kk][2] = vertex_index[ii][jj][kk - 1][6];
-                        vertex_index[ii][jj][kk][3] = vertex_index[ii][jj][kk - 1][7];
+                    if k > 0 {
+                        vertex_index[i][j][k][0] = vertex_index[i][j][k - 1][4];
+                        vertex_index[i][j][k][1] = vertex_index[i][j][k - 1][5];
+                        vertex_index[i][j][k][2] = vertex_index[i][j][k - 1][6];
+                        vertex_index[i][j][k][3] = vertex_index[i][j][k - 1][7];
                     }
-                    if jj > 0 {
-                        vertex_index[ii][jj][kk][4] = vertex_index[ii][jj - 1][kk][6];
-                        vertex_index[ii][jj][kk][8] = vertex_index[ii][jj - 1][kk][11];
-                        vertex_index[ii][jj][kk][9] = vertex_index[ii][jj - 1][kk][10];
+                    if j > 0 {
+                        vertex_index[i][j][k][4] = vertex_index[i][j - 1][k][6];
+                        vertex_index[i][j][k][8] = vertex_index[i][j - 1][k][11];
+                        vertex_index[i][j][k][9] = vertex_index[i][j - 1][k][10];
                     }
-                    if ii > 0 {
-                        vertex_index[ii][jj][kk][7] = vertex_index[ii - 1][jj][kk][5];
-                        vertex_index[ii][jj][kk][11] = vertex_index[ii - 1][jj][kk][10];
+                    if i > 0 {
+                        vertex_index[i][j][k][7] = vertex_index[i - 1][j][k][5];
+                        vertex_index[i][j][k][11] = vertex_index[i - 1][j][k][10];
                     }
                     if local_value[1][0][1] * local_value[1][1][1] < 0.0 {
                         let c = (local_value[1][0][1]
                             / (local_value[1][0][1] - local_value[1][1][1]))
                             .abs();
                         let pos = Vec3::new(
-                            (i as f32 + 1.0) * self.voxel_size,
-                            (j as f32 + c) * self.voxel_size,
-                            (k as f32 + 1.0) * self.voxel_size,
+                            (i as f32 + 1.0) * self.voxel_size + self.lower_bounds.x,
+                            (j as f32 + c) * self.voxel_size + self.lower_bounds.y,
+                            (k as f32 + 1.0) * self.voxel_size + self.lower_bounds.z,
                         );
                         let norm =
                             local_gradient[1][0][1] * (1.0 - c) + local_gradient[1][1][1] * c;
-                        vertex_index[ii][jj][kk][5] = position.len() as i32;
+                        vertex_index[i][j][k][5] = position.len() as i32;
                         position.push(pos);
                         normal.push(norm.normalize());
                     }
@@ -138,13 +135,13 @@ impl Surfacer {
                             / (local_value[0][1][1] - local_value[1][1][1]))
                             .abs();
                         let pos = Vec3::new(
-                            (i as f32 + c) * self.voxel_size,
-                            (j as f32 + 1.0) * self.voxel_size,
-                            (k as f32 + 1.0) * self.voxel_size,
+                            (i as f32 + c) * self.voxel_size + self.lower_bounds.x,
+                            (j as f32 + 1.0) * self.voxel_size + self.lower_bounds.y,
+                            (k as f32 + 1.0) * self.voxel_size + self.lower_bounds.z,
                         );
                         let norm =
                             local_gradient[0][1][1] * (1.0 - c) + local_gradient[1][1][1] * c;
-                        vertex_index[ii][jj][kk][6] = position.len() as i32;
+                        vertex_index[i][j][k][6] = position.len() as i32;
                         position.push(pos);
                         normal.push(norm.normalize());
                     }
@@ -153,13 +150,13 @@ impl Surfacer {
                             / (local_value[1][1][0] - local_value[1][1][1]))
                             .abs();
                         let pos = Vec3::new(
-                            (i as f32 + 1.0) * self.voxel_size,
-                            (j as f32 + 1.0) * self.voxel_size,
-                            (k as f32 + c) * self.voxel_size,
+                            (i as f32 + 1.0) * self.voxel_size + self.lower_bounds.x,
+                            (j as f32 + 1.0) * self.voxel_size + self.lower_bounds.y,
+                            (k as f32 + c) * self.voxel_size + self.lower_bounds.z,
                         );
                         let norm =
                             local_gradient[1][1][0] * (1.0 - c) + local_gradient[1][1][1] * c;
-                        vertex_index[ii][jj][kk][10] = position.len() as i32;
+                        vertex_index[i][j][k][10] = position.len() as i32;
                         position.push(pos);
                         normal.push(norm.normalize());
                     }
@@ -176,7 +173,7 @@ impl Surfacer {
                             break;
                         }
                         let vertex_id =
-                            vertex_index[ii][jj][kk][Self::MARCHING_CUBES_TABLE[code][id] as usize];
+                            vertex_index[i][j][k][Self::MARCHING_CUBES_TABLE[code][id] as usize];
                         assert!(vertex_id >= 0);
                         triangle_index.push(vertex_id as u32);
                     }
