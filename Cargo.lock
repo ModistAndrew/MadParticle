@@ -2444,6 +2444,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "isosurface"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4caf4535490ed52ef057093edbd2e30440c997ae5e65b95691c694e0321dc54"
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3208,6 +3214,7 @@ name = "particle"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "isosurface",
  "itertools 0.14.0",
  "rayon",
 ]

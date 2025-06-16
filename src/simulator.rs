@@ -1,3 +1,4 @@
+use crate::aabb::Aabb;
 use crate::grid::Grid;
 use bevy::math::Vec3;
 use itertools::Itertools;
@@ -7,7 +8,7 @@ use std::f32::consts::PI;
 pub struct Particle {
     boundary: bool,
     old_position: Vec3,
-    pub position: Vec3,
+    position: Vec3,
     velocity: Vec3,
     neighbors: Vec<usize>,
     density: f32,
@@ -90,20 +91,20 @@ impl FluidParams {
 }
 
 pub struct Simulator {
-    pub particles: Vec<Particle>,
+    particles: Vec<Particle>,
     boundaries: Vec<Particle>,
-    bounds: Vec3,
+    min_max: Aabb,
     step_dt: f32,
     gravity: Vec3,
     fluid_params: FluidParams,
 }
 
 impl Simulator {
-    pub fn new(step_dt: f32, gravity: Vec3, bounds: Vec3, fluid_params: FluidParams) -> Self {
+    pub fn new(step_dt: f32, gravity: Vec3, min_max: Aabb, fluid_params: FluidParams) -> Self {
         Self {
             particles: Vec::new(),
             boundaries: Vec::new(),
-            bounds,
+            min_max,
             step_dt,
             gravity,
             fluid_params,
@@ -122,17 +123,12 @@ impl Simulator {
         const SOLVER_ITERATIONS: usize = 5;
         let current_time = std::time::Instant::now();
 
-        self.particles.retain(|particle| {
-            particle.position.x.abs() <= self.bounds.x
-                && particle.position.y.abs() <= self.bounds.y
-                && particle.position.z.abs() <= self.bounds.z
-        });
         for particle in &mut self.particles {
             particle.force = self.gravity;
         }
         self.update_neighbors();
         self.update_densities();
-        self.update_normal();
+        self.update_normals();
         self.apply_surface_tension();
         self.apply_adhesion();
         for particle in &mut self.particles {
@@ -156,20 +152,33 @@ impl Simulator {
         for particle in &mut self.particles {
             particle.old_position = particle.position;
         }
+        for particle in &mut self.particles {
+            particle.position = self.min_max.clamp(particle.position);
+        }
 
         let elapsed = current_time.elapsed();
         println!("PBD step took: {:.2?}", elapsed);
     }
 
-    pub fn get_particle_position(&self, index: usize) -> Vec3 {
-        self.particles[index].position
+    pub fn positions(&self) -> Vec<Vec3> {
+        self.particles
+            .iter()
+            .map(|particle| particle.position)
+            .collect()
     }
 
-    pub fn init(&mut self) {
+    pub fn boundary_positions(&self) -> Vec<Vec3> {
+        self.boundaries
+            .iter()
+            .map(|particle| particle.position)
+            .collect()
+    }
+
+    pub fn init_boundary(&mut self) {
         self.compute_phis();
     }
 
-    fn update_normal(&mut self) {
+    fn update_normals(&mut self) {
         let (positions, boundaries, densities): (Vec<_>, Vec<_>, Vec<_>) = self
             .particle_chain()
             .map(|p| (p.position, p.boundary, p.density))

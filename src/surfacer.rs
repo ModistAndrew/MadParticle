@@ -1,3 +1,4 @@
+use crate::aabb::Aabb;
 use crate::grid::Grid;
 use crate::simulator::*;
 use bevy::math::Vec3;
@@ -21,11 +22,12 @@ pub struct Surfacer {
 impl Surfacer {
     pub fn new(
         density_threshold: f32,
-        lower_bounds: Vec3,
-        upper_bounds: Vec3,
+        min_max: Aabb,
         voxel_size: f32,
         fluid_params: FluidParams,
     ) -> Self {
+        let lower_bounds = min_max.min;
+        let upper_bounds = min_max.max;
         let total_voxels = Vec3::new(
             (upper_bounds.x - lower_bounds.x) / voxel_size,
             (upper_bounds.y - lower_bounds.y) / voxel_size,
@@ -40,7 +42,7 @@ impl Surfacer {
         }
     }
 
-    pub fn surface(&self, fluid_particles: &Vec<Particle>) -> (Vec<Vec3>, Vec<Vec3>, Vec<u32>) {
+    pub fn surface(&self, positions: Vec<Vec3>) -> (Vec<Vec3>, Vec<Vec3>, Vec<u32>) {
         let current_time = std::time::Instant::now();
 
         let mut voxels = vec![
@@ -70,11 +72,10 @@ impl Surfacer {
         }
 
         let radius = self.fluid_params.kernel_radius;
-        let positions: Vec<Vec3> = fluid_particles.iter().map(|p| p.position).collect();
         let grid = Grid::new(radius, positions);
         voxels.par_iter_mut().flatten().flatten().for_each(|voxel| {
             let neighbors = grid.neighbors(voxel.pos);
-            voxel.value = -self.density_threshold;
+            voxel.value = -self.density_threshold * self.fluid_params.target_density;
             voxel.gradient = Vec3::ZERO;
             for &neighbor_index in &neighbors {
                 let dir = voxel.pos - grid.position(neighbor_index);
