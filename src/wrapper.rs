@@ -81,11 +81,11 @@ impl Wrapper {
     }
 
     pub fn step(&mut self) {
-        self.simulator.step();
-        self.tick += 1;
         if self.tick % self.sub_step_count == 0 {
             self.surface();
         }
+        self.simulator.step();
+        self.tick += 1;
     }
 
     fn surface(&mut self) {
@@ -102,7 +102,7 @@ impl Wrapper {
         mesh: (Vec<Vec3>, Vec<Vec3>, Vec<u32>),
     ) -> Result<(), Box<dyn Error>> {
         let (vertices, normals, indices) = mesh;
-        let path = format!("{}{:04}.obj", self.path, self.tick);
+        let path = format!("{}_{}.obj", self.path, self.tick / self.sub_step_count);
         create_dir_all(Path::new(&path).parent().unwrap())?;
         let mut file = File::create(path)?;
         for v in vertices {

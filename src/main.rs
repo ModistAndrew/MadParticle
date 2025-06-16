@@ -51,7 +51,7 @@ fn init_wrapper() -> Wrapper {
             min_max: Aabb::new(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, 8.0, 5.0)),
         },
         SurfacerParams {
-            density_threshold: 0.7,
+            density_threshold: 0.8,
             min_max: Aabb::new(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, 8.0, 5.0)),
         },
         particles,
