@@ -46,7 +46,7 @@ impl Wrapper {
     ) -> Self {
         let fluid_params = FluidParams {
             kernel_radius: common_params.radius * 4.0,
-            target_density: 1.0 / (2.0 * common_params.radius).powi(3),
+            target_density: 1.25 / (2.0 * common_params.radius).powi(3),
             viscosity: common_params.viscosity,
             surface_tension: common_params.surface_tension,
             adhesion: common_params.adhesion,

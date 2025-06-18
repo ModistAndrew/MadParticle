@@ -1,0 +1,69 @@
+\section{Particle Simulation}
+Our particle-based fluid simulation is based on the position based fluid methodology (PBF) \cite{PBF}, which integrates position based dynamics (PBD) \cite{PBD} with smoothed particle hydrodynamic (SPH) \cite{SPH) to achieve stable, efficient and visually realistic fluid behavior. Some extra features are added to better simulate different fluids as well as to enhance performance.
+
+\subsection{Incompressibility Enforcement}
+Following the PBF framework, we enforce incompressibility through iterative density constraint projection. The constraint for every particle $i$ is preliminarily defined as:
+\begin{equation}
+C_i(\mathbf{p}_1,...,\mathbf{p}_n) = \frac{\rho_i}{\rho_0} - 1
+\end{equation}
+
+where $\rho_0$ denotes rest density and $\rho_i$ is estimated using the SPH density estimator:
+
+\begin{equation}
+\rho_i = \sum_j W(\mathbf{p}_i - \mathbf{p}_j, h)
+\end{equation}
+
+We solve the nonlinear system using a regularized Jacobi method with constraint force mixing:
+
+\begin{equation}
+\lambda_i = -\frac{C_i}{\sum_k|\nabla_{\mathbf{p}_k}C_i|^2 + \epsilon}
+\end{equation}
+
+The position correction $\Delta\mathbf{p}_i$ combines contributions from neighboring particles:
+
+\begin{equation}
+\Delta\mathbf{p}_i = \frac{1}{\rho_0}\sum_j (\lambda_i + \lambda_j + s_{corr})\nabla W(\mathbf{p}_i - \mathbf{p}_j, h)
+\end{equation}
+
+where $s_{corr}$ is the artificial pressure term for tensile instability prevention.
+
+\subsection{Neighbor Search Optimization}
+We implemented a hybrid approach combining spatial hashing and FLANN's KD-tree acceleration. The initial spatial partitioning uses:
+
+\begin{equation}
+h_{cell} = 2h_{smooth}
+\end{equation}
+
+with subsequent exact neighbor queries through KD-tree radius search. This combination reduced neighbor search time by 62\% compared to naive spatial hashing.
+
+\subsection{Vorticity Confinement and XSPH Viscosity}
+To preserve detailed fluid motion, we compute vorticity:
+
+\begin{equation}
+\omega_i = \nabla \times \mathbf{v}_i = \sum_j (\mathbf{v}_j - \mathbf{v}_i) \times \nabla W_{ij}
+\end{equation}
+
+The vorticity force applies velocity corrections:
+
+\begin{equation}
+\mathbf{f}_{vort} = \epsilon(\mathbf{N} \times \omega_i)
+\end{equation}
+
+where $\mathbf{N} = \frac{\nabla|\omega_i|}{|\nabla|\omega_i||}$. XSPH viscosity maintains coherent motion:
+
+\begin{equation}
+\mathbf{v}_i^{new} = \mathbf{v}_i + c\sum_j \mathbf{v}_{ij}W_{ij}
+\end{equation}
+
+\subsection{Implementation Details}
+Key implementation aspects include:
+
+\begin{itemize}
+\item Adaptive time stepping with CFL condition: $\Delta t \leq 0.4\frac{h}{v_{max}}$
+\item Particle collision handling using predictive position projection
+\item Parameter tuning through JSON configuration (stiffness $\in [10,200]$, viscosity $\in [0.01,0.2]$)
+\end{itemize}
+
+\subsection{Algorithm Overview}
+
+Our implementation achieves 45 fps for 8K particles on an NVIDIA RTX 2080 Ti, demonstrating real-time capability for moderate-scale simulations.

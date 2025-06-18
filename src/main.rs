@@ -18,9 +18,14 @@ struct WrapperComponent(Wrapper);
 
 fn main() {
     let args: Vec<String> = args().collect();
-    let headless = args.len() > 1 && args[1] == "--headless";
+    let headless = args.len() > 1;
+    let output_path = if headless {
+        &args[1] // if headless, use the first argument as output path
+    } else {
+        "output/mesh" // default output path for non-headless mode
+    };
     if headless {
-        let mut wrapper = init_wrapper();
+        let mut wrapper = init_wrapper(output_path);
         loop {
             wrapper.step();
         }
@@ -33,11 +38,16 @@ fn main() {
     }
 }
 
-fn init_wrapper() -> Wrapper {
+fn init_wrapper(output_path: &str) -> Wrapper {
     let radius = 0.05;
     let generator = Generator::new(radius);
-    let particles = generator.aabb(Vec3::new(-2.0, 0.0, -2.0), Vec3::new(2.0, 4.0, 2.0));
-    let boundaries = generator.closed_box(Vec3::new(-4.0, -1.0, -4.0), Vec3::new(4.0, 7.0, 4.0));
+    let mut particles = Vec::new();
+    particles.extend(generator.aabb(Vec3::new(-2.0, 0.0, -2.0), Vec3::new(2.0, 4.0, 2.0)));
+    let mut boundaries = Vec::new();
+    boundaries.extend(generator.open_box(Vec3::new(-4.0, -0.65, -4.0), Vec3::new(4.0, 6.0, 4.0)));
+    boundaries.extend(
+        Generator::from_csv("assets/output.csv").expect("Failed to read boundaries from CSV"),
+    );
     let wrapper = Wrapper::new(
         CommonParams {
             radius,
@@ -57,7 +67,7 @@ fn init_wrapper() -> Wrapper {
         particles,
         boundaries,
         20,
-        "output/mesh".to_string(),
+        output_path.to_string(),
     );
     wrapper
 }
@@ -79,7 +89,7 @@ fn setup(
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
 
-    let wrapper = init_wrapper();
+    let wrapper = init_wrapper("output/mesh");
     let radius = wrapper.radius;
     let particle_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
     let boundary_mesh = meshes.add(Mesh::from(Sphere::new(radius / 5.0)));
