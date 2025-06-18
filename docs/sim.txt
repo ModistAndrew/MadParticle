@@ -5,65 +5,114 @@ Our particle-based fluid simulation is based on the position based fluid methodo
 Following the PBF framework, we enforce incompressibility through iterative density constraint projection. The constraint for every particle $i$ is preliminarily defined as:
 \begin{equation}
 C_i(\mathbf{p}_1,...,\mathbf{p}_n) = \frac{\rho_i}{\rho_0} - 1
+\label{constraint}
 \end{equation}
 
-where $\rho_0$ denotes rest density and $\rho_i$ is estimated using the SPH density estimator:
+where $\rho_0$ denotes rest density and $\rho_i$ is estimated using the SPH density estimator (the mass is omitted here as we assume unit mass for all particles):
 
 \begin{equation}
 \rho_i = \sum_j W(\mathbf{p}_i - \mathbf{p}_j, h)
 \end{equation}
 
-We solve the nonlinear system using a regularized Jacobi method with constraint force mixing:
+We solve the constraint by giving a Lagrange multiplier:
 
 \begin{equation}
 \lambda_i = -\frac{C_i}{\sum_k|\nabla_{\mathbf{p}_k}C_i|^2 + \epsilon}
 \end{equation}
 
-The position correction $\Delta\mathbf{p}_i$ combines contributions from neighboring particles:
+and applying the position update:
 
 \begin{equation}
-\Delta\mathbf{p}_i = \frac{1}{\rho_0}\sum_j (\lambda_i + \lambda_j + s_{corr})\nabla W(\mathbf{p}_i - \mathbf{p}_j, h)
+\Delta\mathbf{p}_i = \frac{1}{\rho_0}\sum_j (\lambda_i + \lambda_j)\nabla W(\mathbf{p}_i - \mathbf{p}_j, h)
 \end{equation}
 
-where $s_{corr}$ is the artificial pressure term for tensile instability prevention.
-
-\subsection{Neighbor Search Optimization}
-We implemented a hybrid approach combining spatial hashing and FLANN's KD-tree acceleration. The initial spatial partitioning uses:
-
+Here, $\epsilon$ is a small constant to avoid division by zero, and $W$ is the smoothing kernel function, where we use the Poly6 kernel:
 \begin{equation}
-h_{cell} = 2h_{smooth}
+W_\text{poly6}(\mathbf{r},h) = \frac{315}{64\pi h^9}
+\begin{cases}
+(h^2 - |\mathbf{r}|^2)^3 & 0 \le |\mathbf{r}| \le h \\
+0 & \text{otherwise}
+\end{cases}
 \end{equation}
-
-with subsequent exact neighbor queries through KD-tree radius search. This combination reduced neighbor search time by 62\% compared to naive spatial hashing.
-
-\subsection{Vorticity Confinement and XSPH Viscosity}
-To preserve detailed fluid motion, we compute vorticity:
-
+Meanwhile, $\nabla W$ is given by the gradient of another kernel, spiky, as it behaves better:
 \begin{equation}
-\omega_i = \nabla \times \mathbf{v}_i = \sum_j (\mathbf{v}_j - \mathbf{v}_i) \times \nabla W_{ij}
+\nabla W_\text{spiky}(\mathbf{r},h) = -\frac{45}{\pi h^6}
+\begin{cases} (h-|\mathbf{r}|)^2 \frac{\mathbf{r}}{|\mathbf{r}|} & 0 \le |\mathbf{r}| \le h \\
+0 & \text{otherwise},
+\end{cases}
 \end{equation}
-
-The vorticity force applies velocity corrections:
-
+Noticing that, when particles are far away, the density constraint \eqref{constraint} will make them move towards each other, which is not desired (physically speaking, this means negative pressure). To avoid this, we change the constraint to an inequality:
 \begin{equation}
-\mathbf{f}_{vort} = \epsilon(\mathbf{N} \times \omega_i)
+C_i(\mathbf{p}_1,...,\mathbf{p}_n) \leq \frac{\rho_i}{\rho_0} - 1
 \end{equation}
-
-where $\mathbf{N} = \frac{\nabla|\omega_i|}{|\nabla|\omega_i||}$. XSPH viscosity maintains coherent motion:
-
+To solve this inequality, we use the same Lagrange multiplier method, but only apply the position update when the calculated $C_i$ is positive, i.e., when the particles are too close to each other.
+\subsection{Boundary Handling}
+Fluids only fascinate when they interact with solids. In this work, we only consider static boundaries. The simplest way to handle boundaries is to simply clamp particles to the boundary, but this will lead to particles being stuck on walls, especially when we use the inequality constraint, as there is no force to push them away \ref{stuck}. Instead, we adopt the method in \cite{Boundary}, which models boundaries as virtual particles and takes them into account when calculating the density:
 \begin{equation}
-\mathbf{v}_i^{new} = \mathbf{v}_i + c\sum_j \mathbf{v}_{ij}W_{ij}
+\rho_i = \sum_j m_j W(\mathbf{x}_{ij}, h) + \sum_k \psi_{b_k} W(\mathbf{x}_{ik}, h)
 \end{equation}
+Here, $\psi_{b_k}$ balances the density of boundary particles, which is defined as:
+\begin{equation}
+\psi_{b_k} = \rho_0 \frac{1}{\sum_l W(\mathbf{x}_{kl}, h)}
+\label{boundary}
+\end{equation}
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth]{pic/stuck.png}
+    \caption{Figure from \cite{Stuck} showing the problem of particles being stuck on walls. In fact there are two reasons for this: the complete absence of forces to push particles away from the wall, and the inaccurate density estimation for particles on surfaces, which is much lower (there are fewer neighbors). The paper provides a possible solution to the inaccuracy, but it's too complicated to implement here.}
+    \label{fig:stuck}
+\end{figure}
+\subsection{Viscosity}
+Viscosity is modeled as a force that resists the relative motion of particles. It not only can be used to simulate highly viscous fluids like honey, but also makes the simulation more stable by damping high frequency oscillations. We apply XSPH viscosity \cite{XSPH}, given by the following velocity update:
+\begin{equation}
+ {v}^{new}_i = {v}_i + c\sum\limits_j {v}_{ij}\cdot W({p}_i-{p}_j, h)
+\end{equation}
+\subsection{Surface Tension and Adhesion}
+Surface tension makes fluid particles stick together; adhesion makes them stick to solid boundaries. According to \cite{SurfaceTensionAdhesion}, we model surface tension as a combination of cohesion and curvature forces:
+\begin{equation}
+\mathbf{F}^{surfaceTension}_{i \leftarrow j} = \frac{2\rho_0}{\rho_i + \rho_j} (\mathbf{F}^{cohesion}_{i \leftarrow j} + \mathbf{F}^{curvature}_{i \leftarrow j})
+\end{equation}
+where the cohesion force is defined as:
+\begin{equation}
+\mathbf{F}^{cohesion}_{i \leftarrow j} = -\gamma m_i m_j C(|\mathbf{x}_i - \mathbf{x}_j|) \frac{\mathbf{x}_i - \mathbf{x}_j}{|\mathbf{x}_i - \mathbf{x}_j|}
+\end{equation}
+and the curvature force is defined as:
+\begin{equation}
+\mathbf{F}^{curvature}_{i \leftarrow j} = -\gamma m_i (\mathbf{n}_i - \mathbf{n}_j)
+\end{equation}
+The adhesion force calculation uses the $\psi_{b_k}$ defined above \ref{boundary}:
+\begin{equation}
+\mathbf{F}^{adhesion}_{i \leftarrow k} = -\beta m_i \psi_{b_k} A(|\mathbf{x}_i - \mathbf{x}_k|) \frac{\mathbf{x}_i - \mathbf{x}_k}{|\mathbf{x}_i - \mathbf{x}_k|}
+\end{equation}
+Due to space constraints, for the specialized kernel functions $C$ and $A$, as well as the calculation of normal vector $\mathbf{n}$, please refer to the original paper.
+\subsection{Algorithm}
+As above, various factors are taken into account and they take effect in different ways; some variables are used in multiple places. Based on PBF, we develop a simulation loop to integrate different factors together, outlined in Algorithm \ref{simulation}. Note that the calculated neighbors, densities, etc. are stored to avoid redundant calculations; each step is applied to all particles and can be done in parallel (read-only data is shared, while read-write data is private to each particle).
+\begin{algorithm}
+\caption{Simlation Loop}
+\begin{algorithmic}[1]
+    \State force $\gets$ external forces (gravity, etc.)
+    \State update neighbors
+    \State update densities
+    \State update normals
+    \State apply surface tension (update force)
+    \State apply adhesion (update force)
+    \State velocity $\gets$ velocity $+$ force $\Delta t$
+    \State position $\gets$ old position $+$ velocity $\Delta t$
 
-\subsection{Implementation Details}
-Key implementation aspects include:
+    \For{i in 1, ..., iterations}
+        \State update neighbors
+        \State update densities
+        \State update lambdas
+        \State correct positions (update position)
+    \EndFor
 
-\begin{itemize}
-\item Adaptive time stepping with CFL condition: $\Delta t \leq 0.4\frac{h}{v_{max}}$
-\item Particle collision handling using predictive position projection
-\item Parameter tuning through JSON configuration (stiffness $\in [10,200]$, viscosity $\in [0.01,0.2]$)
-\end{itemize}
-
-\subsection{Algorithm Overview}
-
-Our implementation achieves 45 fps for 8K particles on an NVIDIA RTX 2080 Ti, demonstrating real-time capability for moderate-scale simulations.
+    \State velocity $\gets$ $\frac{1}{\Delta t}$(position - old position)
+    \State apply viscosity (update velocity)
+    \State old position $\gets$ position
+\end{algorithmic}
+\label{simulation}
+\end{algorithm}
+\subsection{Initialization}
+The initialization stage involves giving an initial distribution of fluid and boundary particles; $\psi_{b_k}$ can be precomputed as we assume fixed boundaries. The PBF framework requires the initial constraints to be satisfied, otherwise there may be large initial forces leading to instability. To achieve this, we restrict fluid particles to stacking on a regular grid, and the rest density $\rho_0$ is set to slightly larger than the average density of the initial distribution, calculated as $\rho_0 = \frac{\eta}{d^3}$, where $\eta$ we set to $1.25$. Boundary particles are also initialized as grids. We write a simple script to transform a 3D model into a grid of particles using rasterization.
+\subsection{Optimization}
+We parallelized the simulation loop for time-consuming steps like neighbor search and density estimation. Neighbor search is optimized using spatial hashing, which partitions the simulation space into cells of size $d = h$, and only checking $27$ neighboring cells for neighbor queries. We also give a hard boundary to limit particles moving too far away from the viewport.

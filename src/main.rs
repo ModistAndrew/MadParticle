@@ -42,27 +42,27 @@ fn init_wrapper(output_path: &str) -> Wrapper {
     let radius = 0.05;
     let generator = Generator::new(radius);
     let mut particles = Vec::new();
-    particles.extend(generator.aabb(Vec3::new(-2.0, 0.0, -2.0), Vec3::new(2.0, 4.0, 2.0)));
+    particles.extend(generator.aabb(Vec3::new(-1.0, 6.0, -1.0), Vec3::new(1.0, 10.0, 1.0)));
     let mut boundaries = Vec::new();
-    boundaries.extend(generator.open_box(Vec3::new(-4.0, -0.65, -4.0), Vec3::new(4.0, 6.0, 4.0)));
+    boundaries.extend(generator.closed_box(Vec3::new(-4.0, -10.0, -4.0), Vec3::new(4.0, 11.0, 4.0)));
     boundaries.extend(
         Generator::from_csv("assets/output.csv").expect("Failed to read boundaries from CSV"),
     );
     let wrapper = Wrapper::new(
         CommonParams {
             radius,
-            viscosity: 0.02,
-            surface_tension: 0.1,
-            adhesion: 0.1,
+            viscosity: 1.0,
+            surface_tension: 5.0,
+            adhesion: 5.0,
         },
         SimulatorParams {
             step_dt: 1.0 / 1200.0,
             gravity: Vec3::new(0.0, -9.81, 0.0),
-            min_max: Aabb::new(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, 8.0, 5.0)),
+            min_max: Aabb::new(Vec3::new(-5.0, -11.0, -5.0), Vec3::new(5.0, 12.0, 5.0)),
         },
         SurfacerParams {
             density_threshold: 0.8,
-            min_max: Aabb::new(Vec3::new(-5.0, -2.0, -5.0), Vec3::new(5.0, 8.0, 5.0)),
+            min_max: Aabb::new(Vec3::new(-5.0, -11.0, -5.0), Vec3::new(5.0, 12.0, 5.0)),
         },
         particles,
         boundaries,
