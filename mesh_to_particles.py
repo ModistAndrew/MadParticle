@@ -2,6 +2,7 @@ import csv
 import math
 import numpy as np
 import trimesh
+import sys
 
 
 def obj_to_particle_boundaries_sdf(obj_file_path, output_csv_path, particle_radius):
@@ -61,8 +62,24 @@ def obj_to_particle_insides_sdf(obj_file_path, output_csv_path, particle_radius)
 
 
 if __name__ == "__main__":
-    obj_to_particle_boundaries_sdf(
-        "../assets/bunny.obj",
-        "../assets/output.csv",
-        particle_radius=0.05
-    )
+    argv = sys.argv
+    argv = argv[argv.index("--") + 1:] if "--" in argv else []
+
+    name = argv[0]
+    b = argv[1] if len(argv) > 1 else ""
+    r = argv[2] if len(argv) > 2 else "0.05"
+    r = float(r)
+    obj_file_path = f"assets/{name}.obj"
+    output_csv_path = f"assets/{name}.csv"
+    if b == "b":
+        obj_to_particle_boundaries_sdf(
+            obj_file_path,
+            output_csv_path,
+            particle_radius=0.05
+        )
+    else:
+        obj_to_particle_insides_sdf(
+            obj_file_path,
+            output_csv_path,
+            particle_radius=0.05
+        )

@@ -6,7 +6,7 @@ if [ $# -eq 0 ]; then
 fi
 
 TARGET="$1"
-BLEND="scene/${TARGET}.blend"
+BLEND="assets/${TARGET}.blend"
 BLENDER_PATH="$HOME/zjx/blender/blender"
 
 for f in $(ls -v output/${TARGET}_*.obj); do

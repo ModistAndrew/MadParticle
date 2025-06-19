@@ -81,11 +81,11 @@ impl Wrapper {
     }
 
     pub fn step(&mut self) {
-        self.simulator.step();
-        self.tick += 1;
-        if self.tick % self.sub_step_count == 0 {
+        if self.tick % self.sub_step_count == 0 && !self.path.is_empty() {
             self.surface();
         }
+        self.simulator.step();
+        self.tick += 1;
     }
 
     fn surface(&mut self) {
