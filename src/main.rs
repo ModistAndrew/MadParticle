@@ -44,7 +44,7 @@ fn init_wrapper(output_path: &str) -> Wrapper {
     let mut particles = Vec::new();
     particles.extend(generator.aabb(Vec3::new(-1.0, 6.0, -1.0), Vec3::new(1.0, 10.0, 1.0)));
     let mut boundaries = Vec::new();
-    boundaries.extend(generator.closed_box(Vec3::new(-4.0, -10.0, -4.0), Vec3::new(4.0, 11.0, 4.0)));
+    boundaries.extend(generator.closed_box(Vec3::new(-4.0, -0.25, -4.0), Vec3::new(4.0, 11.0, 4.0)));
     boundaries.extend(
         Generator::from_csv("assets/output.csv").expect("Failed to read boundaries from CSV"),
     );
@@ -58,11 +58,11 @@ fn init_wrapper(output_path: &str) -> Wrapper {
         SimulatorParams {
             step_dt: 1.0 / 1200.0,
             gravity: Vec3::new(0.0, -9.81, 0.0),
-            min_max: Aabb::new(Vec3::new(-5.0, -11.0, -5.0), Vec3::new(5.0, 12.0, 5.0)),
+            min_max: Aabb::new(Vec3::new(-5.0, -1.0, -5.0), Vec3::new(5.0, 12.0, 5.0)),
         },
         SurfacerParams {
             density_threshold: 0.8,
-            min_max: Aabb::new(Vec3::new(-5.0, -11.0, -5.0), Vec3::new(5.0, 12.0, 5.0)),
+            min_max: Aabb::new(Vec3::new(-5.0, -1.0, -5.0), Vec3::new(5.0, 12.0, 5.0)),
         },
         particles,
         boundaries,
