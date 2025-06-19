@@ -33,7 +33,11 @@ fn main() {
     let headless = args.len() > 2;
     if headless {
         let output_path = &args[2];
-        let mut wrapper = init_wrapper(&config, output_path);
+        if args.len() < 4 {
+            panic!("maximum step count is required for headless mode");
+        }
+        let max_step: i32 = args[3].parse().expect("Invalid step count");
+        let mut wrapper = init_wrapper(&config, output_path, max_step);
         loop {
             wrapper.step();
         }
@@ -53,7 +57,7 @@ fn load_config(path: &str) -> Config {
     from_reader(reader).expect("Failed to parse config file")
 }
 
-fn init_wrapper(config: &Config, output_path: &str) -> Wrapper {
+fn init_wrapper(config: &Config, output_path: &str, max_step: i32) -> Wrapper {
     let radius = config.common.radius;
     let generator = Generator::new(radius);
     let mut particles = Vec::new();
@@ -90,6 +94,7 @@ fn init_wrapper(config: &Config, output_path: &str) -> Wrapper {
         boundaries,
         config.step_count,
         output_path.to_string(),
+        max_step
     );
     wrapper
 }
@@ -112,7 +117,7 @@ fn setup(
         Transform::from_xyz(4.0, 8.0, 4.0),
     ));
 
-    let wrapper = init_wrapper(&config.0, ""); // leave output path empty
+    let wrapper = init_wrapper(&config.0, "", -1); // leave output path empty
     let radius = wrapper.radius;
     let particle_mesh = meshes.add(Mesh::from(Sphere::new(radius)));
     let boundary_mesh = meshes.add(Mesh::from(Sphere::new(radius / 5.0)));

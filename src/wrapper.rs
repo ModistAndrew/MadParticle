@@ -32,6 +32,7 @@ pub struct Wrapper {
     tick: usize,
     sub_step_count: usize,
     path: String,
+    max_step: i32,
 }
 
 impl Wrapper {
@@ -43,6 +44,7 @@ impl Wrapper {
         boundaries: Vec<Vec3>,
         sub_step_count: usize,
         path: String,
+        max_step: i32,
     ) -> Self {
         let fluid_params = FluidParams {
             kernel_radius: common_params.radius * 4.0,
@@ -77,6 +79,7 @@ impl Wrapper {
             tick: 0,
             sub_step_count,
             path,
+            max_step
         }
     }
 
@@ -86,6 +89,10 @@ impl Wrapper {
         }
         self.simulator.step();
         self.tick += 1;
+        if self.max_step > 0 && self.tick > self.max_step as usize {
+            println!("Simulation completed at tick {}", self.tick);
+            std::process::exit(0);
+        }
     }
 
     fn surface(&mut self) {
