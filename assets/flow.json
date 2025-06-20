@@ -6,7 +6,7 @@
     "adhesion": 0.1
   },
   "simulator": {
-    "step_per_sec": 1200.0,
+    "step_per_sec": 12000.0,
     "gravity": [0.0, -9.81, 0.0],
     "min": [-5.0, -3.0, -5.0],
     "max": [5.0, 14.0, 5.0]
@@ -34,5 +34,5 @@
       "path": "assets/flow.csv"
     }
   ],
-  "step_count": 20
+  "step_count": 200
 }
