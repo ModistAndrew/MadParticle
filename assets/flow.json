@@ -1,0 +1,38 @@
+{
+  "common": {
+    "radius": 0.05,
+    "viscosity": 0.02,
+    "surface_tension": 0.1,
+    "adhesion": 0.1
+  },
+  "simulator": {
+    "step_per_sec": 1200.0,
+    "gravity": [0.0, -9.81, 0.0],
+    "min": [-5.0, -3.0, -5.0],
+    "max": [5.0, 14.0, 5.0]
+  },
+  "surfacer": {
+    "density_threshold": 0.8,
+    "min": [-5.0, -3.0, -5.0],
+    "max": [5.0, 14.0, 5.0]
+  },
+  "particle_generators": [
+    {
+      "type": "aabb",
+      "min": [-1.0, 7.0, -1.0],
+      "max": [1.0, 11.0, 1.0]
+    }
+  ],
+  "boundary_generators": [
+    {
+      "type": "closed_box",
+      "min": [-4.0, -2.0, -4.0],
+      "max": [4.0, 13.0, 4.0]
+    },
+    {
+      "type": "csv",
+      "path": "assets/flow.csv"
+    }
+  ],
+  "step_count": 20
+}
